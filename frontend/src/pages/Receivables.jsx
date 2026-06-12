@@ -191,27 +191,28 @@ const received = allReceived.filter(r =>
       </div>
 
       {/* ── Stat boxes ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-        <StatBox
-          label="Total Pending"
-          value={formatCurrency(allPending.reduce((s, r) => s + r.amount, 0))}
-          sub={`${allPending.length} client${allPending.length !== 1 ? 's' : ''}`}
-          accent
-          delay="0ms"
-        />
-        <StatBox
-          label="Total Received"
-          value={formatCurrency(allReceived.reduce((s, r) => s + r.amount, 0))}
-          sub={`${allReceived.length} payment${allReceived.length !== 1 ? 's' : ''}`}
-          delay="60ms"
-        />
-        <StatBox
-          label="Total Expected"
-          value={formatCurrency(receivables.reduce((s, r) => s + r.amount, 0))}
-          sub="all time"
-          delay="120ms"
-        />
-      </div>
+      {/* ── Stat boxes ── */}
+<div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+  <StatBox
+    label="Total Pending"
+    value={formatCurrency(pending.reduce((s, r) => s + r.amount, 0))}
+    sub={`${pending.length} client${pending.length !== 1 ? 's' : ''}`}
+    accent
+    delay="0ms"
+  />
+  <StatBox
+    label="Total Received"
+    value={formatCurrency(received.reduce((s, r) => s + r.amount, 0))}
+    sub={`${received.length} payment${received.length !== 1 ? 's' : ''}`}
+    delay="60ms"
+  />
+  <StatBox
+    label="Total Expected"
+    value={formatCurrency([...pending, ...received].reduce((s, r) => s + r.amount, 0))}
+    sub={search.trim() ? `matching "${search}"` : 'all time'}
+    delay="120ms"
+  />
+</div>
 {/* ── Search ── */}
 <div className="relative mb-5 animate-fadeIn">
   <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-bluebird/40"
