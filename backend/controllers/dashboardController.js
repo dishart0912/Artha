@@ -76,11 +76,12 @@ const getDashboard = async (req, res) => {
         const cardOutstanding = await Promise.all(
             cards.map(async (card) => {
                 const cardTransactions = await Transaction.find({
-                    userId,
-                    cardId: card._id,
-                    paymentMode: 'credit_card',
-                    transactionType: 'expense'
-                });
+    userId,
+    cardId: card._id,
+    paymentMode: 'credit_card',
+    transactionType: 'expense',
+    date: { $gte: monthStart, $lte: monthEnd }  // ← add this
+});
 
                 const outstanding = cardTransactions.reduce(
                     (sum, t) => sum + t.amount,

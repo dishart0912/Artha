@@ -4,11 +4,11 @@ const { addReceivable, getReceivables, markReceived, deleteReceivable } = requir
 const { protect } = require('../middleware/authMiddleware');
 
 router.route('/')
-    .post(protect, addReceivable)
-    .get(protect, getReceivables);
+  .post(protect, addReceivable)
+  .get(protect, getReceivables);
 
 router.route('/:id')
-    .delete(protect, deleteReceivable);
+  .delete(protect, deleteReceivable);
 
 router.patch('/:id/received', protect, markReceived);
 
