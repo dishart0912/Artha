@@ -127,7 +127,7 @@ export default function Receivables() {
   const [loading, setLoading]         = useState(true);
   const [showModal, setShowModal]     = useState(false);
   const [saving, setSaving]           = useState(false);
-
+  const [search, setSearch] = useState('');
   const fetchData = async () => {
     try {
       const data = await getReceivables();
@@ -161,9 +161,15 @@ export default function Receivables() {
     fetchData();
   };
 
-  const pending  = receivables.filter(r => r.status === 'pending');
-  const received = receivables.filter(r => r.status === 'received');
+  const allPending  = receivables.filter(r => r.status === 'pending');
+const allReceived = receivables.filter(r => r.status === 'received');
 
+const pending  = allPending.filter(r =>
+  !search.trim() || r.clientName.toLowerCase().includes(search.toLowerCase())
+);
+const received = allReceived.filter(r =>
+  !search.trim() || r.clientName.toLowerCase().includes(search.toLowerCase())
+);
   return (
     <Layout>
 
@@ -188,15 +194,15 @@ export default function Receivables() {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         <StatBox
           label="Total Pending"
-          value={formatCurrency(pending.reduce((s, r) => s + r.amount, 0))}
-          sub={`${pending.length} client${pending.length !== 1 ? 's' : ''}`}
+          value={formatCurrency(allPending.reduce((s, r) => s + r.amount, 0))}
+          sub={`${allPending.length} client${allPending.length !== 1 ? 's' : ''}`}
           accent
           delay="0ms"
         />
         <StatBox
           label="Total Received"
-          value={formatCurrency(received.reduce((s, r) => s + r.amount, 0))}
-          sub={`${received.length} payment${received.length !== 1 ? 's' : ''}`}
+          value={formatCurrency(allReceived.reduce((s, r) => s + r.amount, 0))}
+          sub={`${allReceived.length} payment${allReceived.length !== 1 ? 's' : ''}`}
           delay="60ms"
         />
         <StatBox
@@ -206,7 +212,28 @@ export default function Receivables() {
           delay="120ms"
         />
       </div>
-
+{/* ── Search ── */}
+<div className="relative mb-5 animate-fadeIn">
+  <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-bluebird/40"
+    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+  </svg>
+  <input
+    type="text"
+    value={search}
+    onChange={e => setSearch(e.target.value)}
+    placeholder="Search by client name..."
+    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-skylight/40 bg-white text-sm text-ocean placeholder-bluebird/30 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition"
+  />
+  {search && (
+    <button
+      onClick={() => setSearch('')}
+      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-bluebird/40 hover:text-ocean transition text-sm"
+    >
+      ✕
+    </button>
+  )}
+</div>
       {/* ── Pending list ── */}
       {pending.length > 0 && (
         <div className="bg-white rounded-2xl border border-skylight/30 shadow-sm overflow-hidden mb-6">
