@@ -151,7 +151,7 @@ export default function Transactions() {
     const [filterMode, setFilterMode]       = useState('all');
     const [filterExpense, setFilterExpense] = useState('all');
     const [search, setSearch]               = useState('');
-
+    const [filterBilling, setFilterBilling] = useState('all');
     const fetchAll = async () => {
         try {
             const [txns, cardList, accountList] = await Promise.all([
@@ -172,15 +172,15 @@ export default function Transactions() {
     useEffect(() => { fetchAll(); }, []);
 
     const filtered = useMemo(() => {
-        return transactions.filter(txn => {
-            if (filterType !== 'all'    && txn.transactionType !== filterType)    return false;
-            if (filterMode !== 'all'    && txn.paymentMode     !== filterMode)    return false;
-            if (filterExpense !== 'all' && txn.expenseType     !== filterExpense) return false;
-            if (search.trim() && !txn.name.toLowerCase().includes(search.toLowerCase())) return false;
-            return true;
-        });
-    }, [transactions, filterType, filterMode, filterExpense, search]);
-
+    return transactions.filter(txn => {
+        if (filterType !== 'all'    && txn.transactionType !== filterType)    return false;
+        if (filterMode !== 'all'    && txn.paymentMode     !== filterMode)    return false;
+        if (filterExpense !== 'all' && txn.expenseType     !== filterExpense) return false;
+        if (filterBilling !== 'all' && txn.billingStatus   !== filterBilling) return false;
+        if (search.trim() && !txn.name.toLowerCase().includes(search.toLowerCase())) return false;
+        return true;
+    });
+}, [transactions, filterType, filterMode, filterExpense, filterBilling, search]);
     const openAdd    = ()    => { setEditingTxn(null); setShowModal(true); };
     const openEdit   = (txn) => { setEditingTxn(txn);  setShowModal(true); };
     const closeModal = ()    => { setShowModal(false);  setEditingTxn(null); };
@@ -325,15 +325,27 @@ export default function Transactions() {
                 </select>
 
                 {/* Expense type */}
-                <select
-                    value={filterExpense}
-                    onChange={e => setFilterExpense(e.target.value)}
-                    className="px-3 py-1.5 rounded-xl border border-skylight/40 bg-white text-xs font-medium text-ocean/70 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition"
-                >
-                    <option value="all">All Types</option>
-                    <option value="fixed">Fixed</option>
-                    <option value="variable">Variable</option>
-                </select>
+                {/* Expense type */}
+<select
+    value={filterExpense}
+    onChange={e => setFilterExpense(e.target.value)}
+    className="px-3 py-1.5 rounded-xl border border-skylight/40 bg-white text-xs font-medium text-ocean/70 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition"
+>
+    <option value="all">All Types</option>
+    <option value="fixed">Fixed</option>
+    <option value="variable">Variable</option>
+</select>
+
+{/* Billing status */}
+<select
+    value={filterBilling}
+    onChange={e => setFilterBilling(e.target.value)}
+    className="px-3 py-1.5 rounded-xl border border-skylight/40 bg-white text-xs font-medium text-ocean/70 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition"
+>
+    <option value="all">All Billing</option>
+    <option value="unbilled">Unbilled</option>
+    <option value="billed">Billed</option>
+</select>
             </div>
 
             {/* ── List ── */}
