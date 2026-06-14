@@ -456,8 +456,8 @@ export default function Transactions() {
             <div className="flex gap-2 mb-5 animate-fadeIn">
                 {[
                     { key: 'list',     label: 'List View' },
-                    { key: 'calendar', label: '📅 Calendar' },
-                    { key: 'cards',    label: '💳 Card Statement' },
+                    { key: 'calendar', label: 'Calendar' },
+                    { key: 'cards',    label: 'Card Statement' },
                 ].map(tab => (
                     <button
                         key={tab.key}
