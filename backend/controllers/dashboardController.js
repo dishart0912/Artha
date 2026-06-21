@@ -1,20 +1,17 @@
 const Transaction = require('../models/Transaction');
 const Card = require('../models/Card');
-const Receivable = require('../models/Receivable');
 
 const getDashboard = async (req, res) => {
     try {
         const userId = req.user._id;
 
-        // ── Determine target month from query param, default to current ──────
-        // Expected format: ?month=2026-06
         const { month } = req.query;
         let targetYear, targetMonth;
 
         if (month && /^\d{4}-\d{2}$/.test(month)) {
             const [y, m] = month.split('-').map(Number);
             targetYear  = y;
-            targetMonth = m - 1; // JS months are 0-indexed
+            targetMonth = m - 1;
         } else {
             const now = new Date();
             targetYear  = now.getFullYear();
@@ -24,28 +21,16 @@ const getDashboard = async (req, res) => {
         const monthStart = new Date(targetYear, targetMonth, 1);
         const monthEnd   = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
 
-        // ── Monthly Transactions ─────────────────────────────────────────────
+        // ── Monthly Transactions (now includes received receivables too) ─────
         const transactions = await Transaction.find({
             userId,
             date: { $gte: monthStart, $lte: monthEnd }
         });
 
-        // ── Transaction Inflow ───────────────────────────────────────────────
-        const transactionInflow = transactions
+        // ── Total Inflow — all inflow transactions, regardless of source ─────
+        const totalInflow = transactions
             .filter(t => t.transactionType === 'inflow' && t.paymentMode !== 'credit_card')
             .reduce((sum, t) => sum + t.amount, 0);
-
-        // ── Received Receivables This Month ──────────────────────────────────
-        const receivedReceivables = await Receivable.find({
-            userId,
-            status: 'received',
-            receivedAt: { $gte: monthStart, $lte: monthEnd }
-        });
-
-        const receivableAmount = receivedReceivables.reduce((sum, r) => sum + r.amount, 0);
-
-        // ── Total Inflow ─────────────────────────────────────────────────────
-        const totalInflow = transactionInflow + receivableAmount;
 
         // ── Direct Expenses ──────────────────────────────────────────────────
         const directExpenses = transactions

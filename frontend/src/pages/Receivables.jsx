@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import { getReceivables, addReceivable, markReceived, deleteReceivable } from '../services/receivableService';
+import { getBankAccounts } from '../services/bankAccountService';
 import { formatCurrency } from '../utils/format';
+
+const BANK_LINKED_MODES = ['upi', 'debit_card', 'bank_transfer'];
 
 // ─── Stat Box ────────────────────────────────────────────────────────────────
 function StatBox({ label, value, sub, accent, delay = '0ms' }) {
@@ -121,17 +124,135 @@ function ReceivableForm({ onSubmit, onCancel, saving }) {
   );
 }
 
+// ─── Mark Received Form ───────────────────────────────────────────────────────
+function MarkReceivedForm({ receivable, accounts, onSubmit, onCancel, saving }) {
+  const [paymentMode, setPaymentMode] = useState('bank_transfer');
+  const [accountId, setAccountId]     = useState('');
+
+  const needsAccount = BANK_LINKED_MODES.includes(paymentMode);
+
+  const inputClass = `
+    w-full px-3.5 py-2.5 rounded-xl border border-skylight/40 bg-skylight/10
+    text-ocean text-sm focus:outline-none focus:ring-2 focus:ring-blueberry/30 focus:border-blueberry/40
+    transition duration-150
+  `;
+  const labelClass = "block text-[11px] font-semibold text-ocean/50 uppercase tracking-wider mb-1.5";
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({
+      paymentMode,
+      accountId: needsAccount ? accountId : null
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Summary */}
+      <div className="bg-skylight/10 rounded-xl p-4 border border-skylight/30">
+        <p className="text-xs text-bluebird/70 mb-1">Receiving payment from</p>
+        <p className="text-sm font-semibold text-ocean">{receivable.clientName}</p>
+        <p className="text-lg font-bold text-ocean mt-1">{formatCurrency(receivable.amount)}</p>
+      </div>
+
+      {/* Payment mode */}
+      <div>
+        <label className={labelClass}>How was it received?</label>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { value: 'bank_transfer', label: 'Bank Transfer' },
+            { value: 'upi',           label: 'UPI' },
+            { value: 'cash',          label: 'Cash' },
+            { value: 'debit_card',    label: 'Card' },
+          ].map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => { setPaymentMode(value); if (!BANK_LINKED_MODES.includes(value)) setAccountId(''); }}
+              className={`py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 ${
+                paymentMode === value
+                  ? 'bg-gradient-to-r from-ocean to-blueberry text-white shadow-sm'
+                  : 'border border-skylight/40 text-bluebird/60 hover:border-blueberry/30 hover:text-ocean'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Bank account — only when relevant */}
+      {needsAccount && (
+        <div className="animate-fadeIn">
+          <label className={labelClass}>
+            Deposit to account <span className="text-red-400">*</span>
+          </label>
+          {accounts.length === 0 ? (
+            <div className="px-3.5 py-2.5 rounded-xl border border-yellow-200 bg-yellow-50 text-xs text-yellow-700">
+              No bank accounts found. Add one in Bank Accounts page first.
+            </div>
+          ) : (
+            <select
+              value={accountId}
+              onChange={e => setAccountId(e.target.value)}
+              required
+              className={inputClass}
+            >
+              <option value="">Select a bank account</option>
+              {accounts.map(acc => (
+                <option key={acc._id} value={acc._id}>
+                  {acc.bankName} – {acc.accountName}
+                  {acc.lastFourDigits ? ` (••${acc.lastFourDigits})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      <div className="border-t border-skylight/30 pt-4 flex gap-3">
+        <button
+          type="button" onClick={onCancel}
+          className="flex-1 py-2.5 rounded-xl border border-skylight/40 text-sm font-medium text-ocean/70 hover:bg-skylight/10 transition duration-150"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={saving || (needsAccount && !accountId && accounts.length > 0)}
+          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white text-sm font-semibold shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {saving ? (
+            <>
+              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              Confirming…
+            </>
+          ) : '✓ Confirm Received'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 export default function Receivables() {
   const [receivables, setReceivables] = useState([]);
+  const [accounts, setAccounts]       = useState([]);
   const [loading, setLoading]         = useState(true);
   const [showModal, setShowModal]     = useState(false);
   const [saving, setSaving]           = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch]           = useState('');
+
+  const [receivingItem, setReceivingItem] = useState(null); // receivable being marked received
+
   const fetchData = async () => {
     try {
-      const data = await getReceivables();
-      setReceivables(data);
+      const [recvs, accts] = await Promise.all([getReceivables(), getBankAccounts()]);
+      setReceivables(recvs);
+      setAccounts(accts);
     } finally {
       setLoading(false);
     }
@@ -150,9 +271,17 @@ export default function Receivables() {
     }
   };
 
-  const handleMarkReceived = async (id) => {
-    await markReceived(id);
-    fetchData();
+  const handleMarkReceived = async (paymentInfo) => {
+    setSaving(true);
+    try {
+      await markReceived(receivingItem._id, paymentInfo);
+      setReceivingItem(null);
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to mark as received');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -162,14 +291,15 @@ export default function Receivables() {
   };
 
   const allPending  = receivables.filter(r => r.status === 'pending');
-const allReceived = receivables.filter(r => r.status === 'received');
+  const allReceived = receivables.filter(r => r.status === 'received');
 
-const pending  = allPending.filter(r =>
-  !search.trim() || r.clientName.toLowerCase().includes(search.toLowerCase())
-);
-const received = allReceived.filter(r =>
-  !search.trim() || r.clientName.toLowerCase().includes(search.toLowerCase())
-);
+  const pending  = allPending.filter(r =>
+    !search.trim() || r.clientName.toLowerCase().includes(search.toLowerCase())
+  );
+  const received = allReceived.filter(r =>
+    !search.trim() || r.clientName.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <Layout>
 
@@ -191,50 +321,51 @@ const received = allReceived.filter(r =>
       </div>
 
       {/* ── Stat boxes ── */}
-      {/* ── Stat boxes ── */}
-<div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-  <StatBox
-    label="Total Pending"
-    value={formatCurrency(pending.reduce((s, r) => s + r.amount, 0))}
-    sub={`${pending.length} client${pending.length !== 1 ? 's' : ''}`}
-    accent
-    delay="0ms"
-  />
-  <StatBox
-    label="Total Received"
-    value={formatCurrency(received.reduce((s, r) => s + r.amount, 0))}
-    sub={`${received.length} payment${received.length !== 1 ? 's' : ''}`}
-    delay="60ms"
-  />
-  <StatBox
-    label="Total Expected"
-    value={formatCurrency([...pending, ...received].reduce((s, r) => s + r.amount, 0))}
-    sub={search.trim() ? `matching "${search}"` : 'all time'}
-    delay="120ms"
-  />
-</div>
-{/* ── Search ── */}
-<div className="relative mb-5 animate-fadeIn">
-  <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-bluebird/40"
-    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-  </svg>
-  <input
-    type="text"
-    value={search}
-    onChange={e => setSearch(e.target.value)}
-    placeholder="Search by client name..."
-    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-skylight/40 bg-white text-sm text-ocean placeholder-bluebird/30 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition"
-  />
-  {search && (
-    <button
-      onClick={() => setSearch('')}
-      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-bluebird/40 hover:text-ocean transition text-sm"
-    >
-      ✕
-    </button>
-  )}
-</div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+        <StatBox
+          label="Total Pending"
+          value={formatCurrency(pending.reduce((s, r) => s + r.amount, 0))}
+          sub={`${pending.length} client${pending.length !== 1 ? 's' : ''}`}
+          accent
+          delay="0ms"
+        />
+        <StatBox
+          label="Total Received"
+          value={formatCurrency(received.reduce((s, r) => s + r.amount, 0))}
+          sub={`${received.length} payment${received.length !== 1 ? 's' : ''}`}
+          delay="60ms"
+        />
+        <StatBox
+          label="Total Expected"
+          value={formatCurrency([...pending, ...received].reduce((s, r) => s + r.amount, 0))}
+          sub={search.trim() ? `matching "${search}"` : 'all time'}
+          delay="120ms"
+        />
+      </div>
+
+      {/* ── Search ── */}
+      <div className="relative mb-5 animate-fadeIn">
+        <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-bluebird/40"
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by client name..."
+          className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-skylight/40 bg-white text-sm text-ocean placeholder-bluebird/30 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-bluebird/40 hover:text-ocean transition text-sm"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
       {/* ── Pending list ── */}
       {pending.length > 0 && (
         <div className="bg-white rounded-2xl border border-skylight/30 shadow-sm overflow-hidden mb-6">
@@ -256,7 +387,7 @@ const received = allReceived.filter(r =>
                 <div className="flex items-center gap-2 shrink-0">
                   <p className="text-sm font-bold text-ocean">{formatCurrency(r.amount)}</p>
                   <button
-                    onClick={() => handleMarkReceived(r._id)}
+                    onClick={() => setReceivingItem(r)}
                     className="px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-600 text-xs font-semibold rounded-lg border border-green-200 transition-all duration-200"
                   >
                     ✓ Received
@@ -295,7 +426,6 @@ const received = allReceived.filter(r =>
                   <span className="px-3 py-1.5 bg-green-50 text-green-600 text-xs font-semibold rounded-lg border border-green-200">
                     ✓ Received
                   </span>
-                  {/* ← delete button added to received list */}
                   <button
                     onClick={() => handleDelete(r._id)}
                     className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-400 text-xs font-semibold rounded-lg border border-red-200 transition-all duration-200"
@@ -328,12 +458,25 @@ const received = allReceived.filter(r =>
         </div>
       )}
 
-      {/* ── Modal ── */}
+      {/* ── Add Modal ── */}
       {showModal && (
         <Modal title="Add Receivable" onClose={() => setShowModal(false)}>
           <ReceivableForm
             onSubmit={handleAdd}
             onCancel={() => setShowModal(false)}
+            saving={saving}
+          />
+        </Modal>
+      )}
+
+      {/* ── Mark Received Modal ── */}
+      {receivingItem && (
+        <Modal title="Confirm Payment Received" onClose={() => setReceivingItem(null)}>
+          <MarkReceivedForm
+            receivable={receivingItem}
+            accounts={accounts}
+            onSubmit={handleMarkReceived}
+            onCancel={() => setReceivingItem(null)}
             saving={saving}
           />
         </Modal>
