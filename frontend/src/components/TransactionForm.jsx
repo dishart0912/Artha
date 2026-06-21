@@ -251,18 +251,21 @@ export default function TransactionForm({ initial, cards = [], accounts = [], on
                         </select>
                     </div>
                     <div>
-                        <label className={labelCls}>Category</label>
-                        <select
-                            value={form.category}
-                            onChange={set('category')}
-                            className={inputCls}
-                        >
-                            <option value="">Select category</option>
-                            {CATEGORIES.map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                        </select>
-                    </div>
+    <label className={labelCls}>Category</label>
+    <input
+        type="text"
+        list="category-suggestions"
+        value={form.category}
+        onChange={set('category')}
+        placeholder="Type or pick a category"
+        className={inputCls}
+    />
+    <datalist id="category-suggestions">
+        {CATEGORIES.map(cat => (
+            <option key={cat} value={cat} />
+        ))}
+    </datalist>
+</div>
                 </div>
             )}
 

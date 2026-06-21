@@ -109,7 +109,6 @@ function CalendarView({ transactions, onDaySelect, selectedDate }) {
     const firstDay  = new Date(viewYear, viewMonth, 1).getDay();
     const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
 
-    // Build a map: "YYYY-MM-DD" → { total, count, hasInflow, hasExpense }
     const dayMap = useMemo(() => {
         const map = {};
         transactions.forEach(txn => {
@@ -144,7 +143,6 @@ function CalendarView({ transactions, onDaySelect, selectedDate }) {
 
     return (
         <div className="bg-white rounded-2xl border border-skylight/30 shadow-sm p-5 mb-6 animate-fadeIn">
-            {/* Month nav */}
             <div className="flex items-center justify-between mb-4">
                 <button onClick={prevMonth} className="w-8 h-8 rounded-lg hover:bg-skylight/20 flex items-center justify-center text-ocean transition">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
@@ -155,19 +153,15 @@ function CalendarView({ transactions, onDaySelect, selectedDate }) {
                 </button>
             </div>
 
-            {/* Day headers */}
             <div className="grid grid-cols-7 mb-1">
                 {days.map(d => (
                     <div key={d} className="text-center text-[10px] font-semibold text-bluebird/50 uppercase py-1">{d}</div>
                 ))}
             </div>
 
-            {/* Day cells */}
             <div className="grid grid-cols-7 gap-0.5">
-                {/* Empty cells before first day */}
                 {[...Array(firstDay)].map((_, i) => <div key={`e${i}`} />)}
 
-                {/* Day cells */}
                 {[...Array(daysInMonth)].map((_, i) => {
                     const day   = i + 1;
                     const dateKey = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -207,7 +201,6 @@ function CalendarView({ transactions, onDaySelect, selectedDate }) {
                 })}
             </div>
 
-            {/* Selected day summary */}
             {selectedDate && dayMap[selectedDate] && (
                 <div className="mt-4 pt-4 border-t border-skylight/20">
                     <p className="text-xs font-semibold text-ocean/60 uppercase tracking-wider mb-2">
@@ -245,8 +238,6 @@ function CardStatement({ transactions, cards }) {
     const billedTotal   = billed.reduce((s, t) => s + t.amount, 0);
     const unbilledTotal = unbilled.reduce((s, t) => s + t.amount, 0);
 
-    const selectedCard = cards.find(c => c._id === selectedCardId);
-
     return (
         <div className="bg-white rounded-2xl border border-skylight/30 shadow-sm p-5 mb-6 animate-fadeIn">
             <div className="flex items-center justify-between mb-4">
@@ -274,7 +265,6 @@ function CardStatement({ transactions, cards }) {
                 <p className="text-xs text-bluebird/50 text-center py-4">No transactions found for this card</p>
             ) : (
                 <>
-                    {/* Summary */}
                     <div className="grid grid-cols-2 gap-3 mb-4">
                         <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3">
                             <p className="text-[10px] font-semibold text-yellow-600 uppercase tracking-wider mb-1">Unbilled</p>
@@ -288,7 +278,6 @@ function CardStatement({ transactions, cards }) {
                         </div>
                     </div>
 
-                    {/* Unbilled transactions */}
                     {unbilled.length > 0 && (
                         <div className="mb-3">
                             <p className="text-[11px] font-semibold text-yellow-600 uppercase tracking-wider mb-2">Unbilled Transactions</p>
@@ -306,7 +295,6 @@ function CardStatement({ transactions, cards }) {
                         </div>
                     )}
 
-                    {/* Billed transactions */}
                     {billed.length > 0 && (
                         <div>
                             <p className="text-[11px] font-semibold text-bluebird uppercase tracking-wider mb-2">Billed Transactions</p>
@@ -340,13 +328,14 @@ export default function Transactions() {
     const [formLoading, setFormLoading]   = useState(false);
     const [error, setError]               = useState('');
 
-    const [filterType, setFilterType]       = useState('all');
-    const [filterMode, setFilterMode]       = useState('all');
-    const [filterExpense, setFilterExpense] = useState('all');
-    const [filterBilling, setFilterBilling] = useState('all');
-    const [search, setSearch]               = useState('');
-    const [selectedDate, setSelectedDate]   = useState(null);
-    const [activeTab, setActiveTab]         = useState('list'); // 'list' | 'calendar' | 'cards'
+    const [filterType, setFilterType]         = useState('all');
+    const [filterMode, setFilterMode]         = useState('all');
+    const [filterExpense, setFilterExpense]   = useState('all');
+    const [filterBilling, setFilterBilling]   = useState('all');
+    const [filterCategory, setFilterCategory] = useState('all');
+    const [search, setSearch]                 = useState('');
+    const [selectedDate, setSelectedDate]     = useState(null);
+    const [activeTab, setActiveTab]           = useState('list'); // 'list' | 'calendar' | 'cards'
 
     const fetchAll = async () => {
         try {
@@ -365,12 +354,19 @@ export default function Transactions() {
 
     useEffect(() => { fetchAll(); }, []);
 
+    // ── Unique categories actually used (built dynamically from data) ─────────
+    const uniqueCategories = useMemo(() => {
+        const cats = transactions.map(t => t.category).filter(Boolean);
+        return [...new Set(cats)].sort();
+    }, [transactions]);
+
     const filtered = useMemo(() => {
         return transactions.filter(txn => {
-            if (filterType    !== 'all' && txn.transactionType !== filterType)    return false;
-            if (filterMode    !== 'all' && txn.paymentMode     !== filterMode)    return false;
-            if (filterExpense !== 'all' && txn.expenseType     !== filterExpense) return false;
-            if (filterBilling !== 'all' && txn.billingStatus   !== filterBilling) return false;
+            if (filterType     !== 'all' && txn.transactionType !== filterType)     return false;
+            if (filterMode     !== 'all' && txn.paymentMode     !== filterMode)     return false;
+            if (filterExpense  !== 'all' && txn.expenseType     !== filterExpense)  return false;
+            if (filterBilling  !== 'all' && txn.billingStatus   !== filterBilling)  return false;
+            if (filterCategory !== 'all' && txn.category        !== filterCategory) return false;
             if (search.trim() && !txn.name.toLowerCase().includes(search.toLowerCase())) return false;
             if (selectedDate) {
                 const txnDate = new Date(txn.date).toISOString().split('T')[0];
@@ -378,7 +374,7 @@ export default function Transactions() {
             }
             return true;
         });
-    }, [transactions, filterType, filterMode, filterExpense, filterBilling, search, selectedDate]);
+    }, [transactions, filterType, filterMode, filterExpense, filterBilling, filterCategory, search, selectedDate]);
 
     const openAdd    = ()    => { setEditingTxn(null); setShowModal(true); };
     const openEdit   = (txn) => { setEditingTxn(txn);  setShowModal(true); };
@@ -524,6 +520,7 @@ export default function Transactions() {
                         ))}
                     </div>
                     <div className="w-px bg-skylight/40 self-stretch mx-1" />
+
                     <select value={filterMode} onChange={e => setFilterMode(e.target.value)} className="px-3 py-1.5 rounded-xl border border-skylight/40 bg-white text-xs font-medium text-ocean/70 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition">
                         <option value="all">All Modes</option>
                         <option value="cash">Cash</option>
@@ -532,16 +529,29 @@ export default function Transactions() {
                         <option value="debit_card">Debit Card</option>
                         <option value="bank_transfer">Bank Transfer</option>
                     </select>
+
                     <select value={filterExpense} onChange={e => setFilterExpense(e.target.value)} className="px-3 py-1.5 rounded-xl border border-skylight/40 bg-white text-xs font-medium text-ocean/70 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition">
                         <option value="all">All Types</option>
                         <option value="fixed">Fixed</option>
                         <option value="variable">Variable</option>
                     </select>
+
                     <select value={filterBilling} onChange={e => setFilterBilling(e.target.value)} className="px-3 py-1.5 rounded-xl border border-skylight/40 bg-white text-xs font-medium text-ocean/70 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition">
                         <option value="all">All Billing</option>
                         <option value="unbilled">Unbilled</option>
                         <option value="billed">Billed</option>
                     </select>
+
+                    {/* ── Category filter — built dynamically from used categories ── */}
+                    {uniqueCategories.length > 0 && (
+                        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="px-3 py-1.5 rounded-xl border border-skylight/40 bg-white text-xs font-medium text-ocean/70 focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition">
+                            <option value="all">All Categories</option>
+                            {uniqueCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </select>
+                    )}
+
                     {selectedDate && (
                         <button onClick={() => setSelectedDate(null)} className="px-3 py-1.5 rounded-xl bg-blueberry/10 text-blueberry text-xs font-semibold hover:bg-blueberry/20 transition">
                             ✕ Clear date
