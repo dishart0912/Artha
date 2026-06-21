@@ -597,6 +597,7 @@ export default function Transactions() {
                         initial={editingTxn}
                         cards={cards}
                         accounts={accounts}
+                        allTransactions={transactions}
                         onSubmit={handleSubmit}
                         onCancel={closeModal}
                         loading={formLoading}

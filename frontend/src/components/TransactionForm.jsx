@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 // Payment modes that require a bank account to be linked
 const BANK_LINKED_MODES = ['upi', 'debit_card', 'bank_transfer'];
 
-const CATEGORIES = [
+const DEFAULT_CATEGORIES = [
     'Food & Dining', 'Transport', 'Shopping', 'Entertainment',
     'Health', 'Bills & Utilities', 'Education', 'Travel',
     'Groceries', 'Fuel', 'Subscriptions', 'Rent', 'Other'
@@ -21,7 +21,7 @@ const defaultForm = {
     category: ''
 };
 
-export default function TransactionForm({ initial, cards = [], accounts = [], onSubmit, onCancel, loading }) {
+export default function TransactionForm({ initial, cards = [], accounts = [], allTransactions = [], onSubmit, onCancel, loading }) {
     const [form, setForm] = useState(defaultForm);
 
     // ── Seed form when editing ────────────────────────────────────────────────
@@ -45,6 +45,10 @@ export default function TransactionForm({ initial, cards = [], accounts = [], on
         }
     }, [initial]);
 
+    // ── Build category suggestions: defaults + everything father has typed before ──
+    const usedCategories = [...new Set(allTransactions.map(t => t.category).filter(Boolean))];
+    const suggestedCategories = [...new Set([...DEFAULT_CATEGORIES, ...usedCategories])].sort();
+
     // ── Derived flags ─────────────────────────────────────────────────────────
     const showAccountDropdown = BANK_LINKED_MODES.includes(form.paymentMode);
     const showCardDropdown    = form.paymentMode === 'credit_card';
@@ -55,7 +59,6 @@ export default function TransactionForm({ initial, cards = [], accounts = [], on
         setForm(prev => ({
             ...prev,
             paymentMode: mode,
-            // clear account/card when switching away from their modes
             accountId: BANK_LINKED_MODES.includes(mode) ? prev.accountId : '',
             cardId:    mode === 'credit_card'            ? prev.cardId    : ''
         }));
@@ -74,7 +77,7 @@ export default function TransactionForm({ initial, cards = [], accounts = [], on
             accountId:       showAccountDropdown ? (form.accountId || null) : null,
             cardId:          showCardDropdown    ? (form.cardId    || null) : null,
             expenseType:     showExpenseFields   ? form.expenseType         : null,
-            category:        showExpenseFields   ? (form.category  || null) : null
+            category:        showExpenseFields   ? (form.category?.trim() || null) : null
         };
         onSubmit(payload);
     };
@@ -251,21 +254,21 @@ export default function TransactionForm({ initial, cards = [], accounts = [], on
                         </select>
                     </div>
                     <div>
-    <label className={labelCls}>Category</label>
-    <input
-        type="text"
-        list="category-suggestions"
-        value={form.category}
-        onChange={set('category')}
-        placeholder="Type or pick a category"
-        className={inputCls}
-    />
-    <datalist id="category-suggestions">
-        {CATEGORIES.map(cat => (
-            <option key={cat} value={cat} />
-        ))}
-    </datalist>
-</div>
+                        <label className={labelCls}>Category</label>
+                        <input
+                            type="text"
+                            list="category-suggestions"
+                            value={form.category}
+                            onChange={set('category')}
+                            placeholder="Type or pick a category"
+                            className={inputCls}
+                        />
+                        <datalist id="category-suggestions">
+                            {suggestedCategories.map(cat => (
+                                <option key={cat} value={cat} />
+                            ))}
+                        </datalist>
+                    </div>
                 </div>
             )}
 
