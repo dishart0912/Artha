@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { getDashboard } from '../services/dashboardService';
 import { formatCurrency } from '../utils/format';
@@ -8,13 +8,16 @@ import { getCards } from '../services/cardService';
 import SpendingChart from '../components/SpendingChart';
 import { getTransactions } from '../services/transactionService';
 
-// ─── Stat Card ───────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, accent, delay = '0ms' }) {
+// ─── Stat Card (clickable) ────────────────────────────────────────────────────
+function StatCard({ label, value, sub, accent, delay = '0ms', onClick }) {
   return (
     <div
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
       className={`
         rounded-2xl p-5 shadow-sm border animate-fadeIn
         transition-all duration-300 hover:shadow-md hover:-translate-y-0.5
+        ${onClick ? 'cursor-pointer' : ''}
         ${accent
           ? 'bg-gradient-to-br from-ocean to-blueberry border-ocean/20 text-white'
           : 'bg-white border-skylight/30 text-ocean'
@@ -22,9 +25,16 @@ function StatCard({ label, value, sub, accent, delay = '0ms' }) {
       `}
       style={{ animationDelay: delay }}
     >
-      <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${accent ? 'text-skylight/80' : 'text-ocean/50'}`}>
-        {label}
-      </p>
+      <div className="flex items-start justify-between">
+        <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${accent ? 'text-skylight/80' : 'text-ocean/50'}`}>
+          {label}
+        </p>
+        {onClick && (
+          <svg className={`w-3.5 h-3.5 ${accent ? 'text-skylight/60' : 'text-bluebird/40'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        )}
+      </div>
       <p className={`text-2xl font-bold tracking-tight ${accent ? 'text-white' : 'text-ocean'}`}>
         {value}
       </p>
@@ -42,6 +52,19 @@ function Skeleton({ className }) {
   return <div className={`animate-pulse bg-skylight/30 rounded-xl ${className}`} />;
 }
 
+// ─── Month options helper — last 12 months including current ─────────────────
+function getMonthOptions() {
+  const options = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    options.push({ value, label });
+  }
+  return options;
+}
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [data, setData]                 = useState(null);
@@ -50,15 +73,19 @@ export default function Dashboard() {
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
 
-  const location = useLocation(); // ← tracks route visits
+  const monthOptions = getMonthOptions();
+  const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value); // current month
+
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchAll = async () => {
-      setLoading(true); // ← reset loading on every navigation
+      setLoading(true);
       setError('');
       try {
         const [dashboard, cardList, txnList] = await Promise.all([
-          getDashboard(),
+          getDashboard(selectedMonth),
           getCards(),
           getTransactions()
         ]);
@@ -72,7 +99,21 @@ export default function Dashboard() {
       }
     };
     fetchAll();
-  }, [location.key]); // ← re-fetches every time you navigate to dashboard
+  }, [location.key, selectedMonth]);
+
+  // ── Navigate to Transactions with filters pre-applied ───────────────────────
+  const goToTransactions = (params) => {
+    const search = new URLSearchParams(params).toString();
+    navigate(`/transactions?${search}`);
+  };
+
+  const monthLabel = monthOptions.find(m => m.value === selectedMonth)?.label
+    || new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  // Build YYYY-MM-DD range for "this month" link (inflow click)
+  const [y, m] = selectedMonth.split('-').map(Number);
+  const monthStartStr = `${y}-${String(m).padStart(2, '0')}-01`;
+  const monthEndStr   = new Date(y, m, 0).toISOString().split('T')[0];
 
   if (loading) return (
     <Layout>
@@ -80,7 +121,7 @@ export default function Dashboard() {
         <Skeleton className="h-7 w-40 mb-2" />
         <Skeleton className="h-4 w-56" />
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"> {/* ← fixed: was md:grid-cols-4 */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-28" />)}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -100,10 +141,7 @@ export default function Dashboard() {
           </svg>
         </div>
         <p className="text-sm text-red-400 font-medium">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="text-xs text-blueberry hover:underline font-semibold"
-        >
+        <button onClick={() => window.location.reload()} className="text-xs text-blueberry hover:underline font-semibold">
           Try again
         </button>
       </div>
@@ -115,37 +153,70 @@ export default function Dashboard() {
 
       {/* ── Page header ── */}
       <div className="mb-7 animate-fadeIn">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-xl font-semibold text-ocean">Dashboard</h2>
-            <p className="text-sm text-bluebird mt-0.5">
-              {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} overview
-            </p>
+            <p className="text-sm text-bluebird mt-0.5">{monthLabel} overview</p>
           </div>
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white rounded-xl border border-skylight/30 shadow-sm">
-            <div className="w-1.5 h-1.5 rounded-full bg-blueberry" />
-            <span className="text-xs font-medium text-ocean">
-              {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
-          </div>
+
+          {/* Month selector */}
+          <select
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+            className="px-3.5 py-2 rounded-xl border border-skylight/40 bg-white text-sm font-medium text-ocean shadow-sm focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition"
+          >
+            {monthOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* ── Stat cards ── */}
+      {/* ── Stat cards (clickable → Transactions) ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-        <StatCard label="Total Inflow"      value={formatCurrency(data?.totalInflow)}      sub="this month" accent delay="0ms"   />
-        <StatCard label="Fixed Expenses"    value={formatCurrency(data?.fixedExpenses)}                            delay="60ms"  />
-        <StatCard label="Variable Expenses" value={formatCurrency(data?.variableExpenses)}                         delay="120ms" />
+        <StatCard
+          label="Total Inflow"
+          value={formatCurrency(data?.totalInflow)}
+          sub={`${monthLabel} · tap to view`}
+          accent
+          delay="0ms"
+          onClick={() => goToTransactions({
+            type: 'inflow',
+            from: monthStartStr,
+            to: monthEndStr
+          })}
+        />
+        <StatCard
+          label="Fixed Expenses"
+          value={formatCurrency(data?.fixedExpenses)}
+          sub="tap to view"
+          delay="60ms"
+          onClick={() => goToTransactions({
+            type: 'expense',
+            expenseType: 'fixed',
+            from: monthStartStr,
+            to: monthEndStr
+          })}
+        />
+        <StatCard
+          label="Variable Expenses"
+          value={formatCurrency(data?.variableExpenses)}
+          sub="tap to view"
+          delay="120ms"
+          onClick={() => goToTransactions({
+            type: 'expense',
+            expenseType: 'variable',
+            from: monthStartStr,
+            to: monthEndStr
+          })}
+        />
       </div>
 
       {/* ── Two-column section ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
 
         {/* Credit card outstanding */}
-        <div
-          className="bg-white rounded-2xl border border-skylight/30 shadow-sm animate-fadeIn overflow-hidden"
-          style={{ animationDelay: '180ms' }}
-        >
+        <div className="bg-white rounded-2xl border border-skylight/30 shadow-sm animate-fadeIn overflow-hidden" style={{ animationDelay: '180ms' }}>
           <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-skylight/20">
             <h3 className="text-sm font-semibold text-ocean">Credit Card Outstanding</h3>
             <a href="/cards" className="text-xs text-blueberry font-semibold hover:underline flex items-center gap-1">

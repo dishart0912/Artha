@@ -7,6 +7,7 @@ import { getCards } from '../services/cardService';
 import { getBankAccounts } from '../services/bankAccountService';
 import { formatCurrency, formatDate } from '../utils/format';
 import { exportTransactionsPDF } from '../utils/pdfExport';
+import { useSearchParams } from 'react-router-dom';
 
 const PAYMENT_LABELS = {
     cash: 'Cash', upi: 'UPI', credit_card: 'Credit Card',
@@ -336,7 +337,7 @@ export default function Transactions() {
     const [search, setSearch]                 = useState('');
     const [selectedDate, setSelectedDate]     = useState(null);
     const [activeTab, setActiveTab]           = useState('list'); // 'list' | 'calendar' | 'cards'
-
+    const [searchParams] = useSearchParams();
     const fetchAll = async () => {
         try {
             const [txns, cardList, accountList] = await Promise.all([
@@ -353,7 +354,12 @@ export default function Transactions() {
     };
 
     useEffect(() => { fetchAll(); }, []);
-
+    useEffect(() => {
+    const type        = searchParams.get('type');
+    const expenseType = searchParams.get('expenseType');
+    if (type) setFilterType(type);
+    if (expenseType) setFilterExpense(expenseType);
+}, [searchParams]);
     // ── Unique categories actually used (built dynamically from data) ─────────
     const uniqueCategories = useMemo(() => {
         const cats = transactions.map(t => t.category).filter(Boolean);

@@ -6,9 +6,23 @@ const getDashboard = async (req, res) => {
     try {
         const userId = req.user._id;
 
-        const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        // ── Determine target month from query param, default to current ──────
+        // Expected format: ?month=2026-06
+        const { month } = req.query;
+        let targetYear, targetMonth;
+
+        if (month && /^\d{4}-\d{2}$/.test(month)) {
+            const [y, m] = month.split('-').map(Number);
+            targetYear  = y;
+            targetMonth = m - 1; // JS months are 0-indexed
+        } else {
+            const now = new Date();
+            targetYear  = now.getFullYear();
+            targetMonth = now.getMonth();
+        }
+
+        const monthStart = new Date(targetYear, targetMonth, 1);
+        const monthEnd   = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
 
         // ── Monthly Transactions ─────────────────────────────────────────────
         const transactions = await Transaction.find({
@@ -18,56 +32,34 @@ const getDashboard = async (req, res) => {
 
         // ── Transaction Inflow ───────────────────────────────────────────────
         const transactionInflow = transactions
-            .filter(
-                (t) =>
-                    t.transactionType === 'inflow' &&
-                    t.paymentMode !== 'credit_card'
-            )
+            .filter(t => t.transactionType === 'inflow' && t.paymentMode !== 'credit_card')
             .reduce((sum, t) => sum + t.amount, 0);
 
         // ── Received Receivables This Month ──────────────────────────────────
         const receivedReceivables = await Receivable.find({
             userId,
             status: 'received',
-            receivedAt: {
-                $gte: monthStart,
-                $lte: monthEnd
-            }
+            receivedAt: { $gte: monthStart, $lte: monthEnd }
         });
 
-        const receivableAmount = receivedReceivables.reduce(
-            (sum, r) => sum + r.amount,
-            0
-        );
+        const receivableAmount = receivedReceivables.reduce((sum, r) => sum + r.amount, 0);
 
         // ── Total Inflow ─────────────────────────────────────────────────────
         const totalInflow = transactionInflow + receivableAmount;
 
         // ── Direct Expenses ──────────────────────────────────────────────────
         const directExpenses = transactions
-            .filter(
-                (t) =>
-                    t.transactionType === 'expense' &&
-                    t.paymentMode !== 'credit_card'
-            )
+            .filter(t => t.transactionType === 'expense' && t.paymentMode !== 'credit_card')
             .reduce((sum, t) => sum + t.amount, 0);
 
         // ── Fixed Expenses ───────────────────────────────────────────────────
         const fixedExpenses = transactions
-            .filter(
-                (t) =>
-                    t.transactionType === 'expense' &&
-                    t.expenseType === 'fixed'
-            )
+            .filter(t => t.transactionType === 'expense' && t.expenseType === 'fixed')
             .reduce((sum, t) => sum + t.amount, 0);
 
         // ── Variable Expenses ────────────────────────────────────────────────
         const variableExpenses = transactions
-            .filter(
-                (t) =>
-                    t.transactionType === 'expense' &&
-                    t.expenseType === 'variable'
-            )
+            .filter(t => t.transactionType === 'expense' && t.expenseType === 'variable')
             .reduce((sum, t) => sum + t.amount, 0);
 
         // ── Credit Card Outstanding ──────────────────────────────────────────
@@ -76,22 +68,18 @@ const getDashboard = async (req, res) => {
         const cardOutstanding = await Promise.all(
             cards.map(async (card) => {
                 const cardTransactions = await Transaction.find({
-    userId,
-    cardId: card._id,
-    paymentMode: 'credit_card',
-    transactionType: 'expense',
-    date: { $gte: monthStart, $lte: monthEnd }  // ← add this
-});
+                    userId,
+                    cardId: card._id,
+                    paymentMode: 'credit_card',
+                    transactionType: 'expense',
+                    date: { $gte: monthStart, $lte: monthEnd }
+                });
 
-                const outstanding = cardTransactions.reduce(
-                    (sum, t) => sum + t.amount,
-                    0
-                );
+                const outstanding = cardTransactions.reduce((sum, t) => sum + t.amount, 0);
 
-                const utilization =
-                    card.creditLimit > 0
-                        ? ((outstanding / card.creditLimit) * 100).toFixed(2)
-                        : '0.00';
+                const utilization = card.creditLimit > 0
+                    ? ((outstanding / card.creditLimit) * 100).toFixed(2)
+                    : '0.00';
 
                 return {
                     cardName: card.cardName,
@@ -106,6 +94,7 @@ const getDashboard = async (req, res) => {
         );
 
         res.status(200).json({
+            month: `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`,
             totalInflow,
             fixedExpenses,
             variableExpenses,
@@ -114,9 +103,7 @@ const getDashboard = async (req, res) => {
         });
     } catch (error) {
         console.error(error);
-        res.status(500).json({
-            message: error.message
-        });
+        res.status(500).json({ message: error.message });
     }
 };
 
