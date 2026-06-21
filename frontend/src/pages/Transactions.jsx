@@ -39,62 +39,81 @@ function FilterPill({ active, onClick, children }) {
 function TxnRow({ txn, index, onEdit, onDelete }) {
     const isInflow = txn.transactionType === 'inflow';
     const accountLabel = txn.accountId
-        ? `${txn.accountId.bankName} ${txn.accountId.accountName}${txn.accountId.lastFourDigits ? ` (••${txn.accountId.lastFourDigits})` : ''}`
+        ? `••${txn.accountId.lastFourDigits || txn.accountId.bankName}`
         : null;
 
     return (
         <div
-            className="flex items-center justify-between px-5 py-4 animate-fadeIn hover:bg-skylight/5 transition-colors duration-150"
+            className="flex items-center justify-between px-4 py-3.5 animate-fadeIn hover:bg-skylight/5 transition-colors duration-150"
             style={{ animationDelay: `${index * 30}ms` }}
         >
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isInflow ? 'bg-emerald-50' : 'bg-red-50'}`}>
-                    <svg className={`w-3.5 h-3.5 ${isInflow ? 'text-emerald-500' : 'text-red-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            {/* Left */}
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isInflow ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                    <svg className={`w-3 h-3 ${isInflow ? 'text-emerald-500' : 'text-red-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         {isInflow
                             ? <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m-7 7l7-7 7 7" />
                             : <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m7-7l-7 7-7-7" />
                         }
                     </svg>
                 </div>
-                <div className="min-w-0">
+
+                <div className="min-w-0 flex-1">
+                    {/* Name — full width, truncated */}
                     <p className="text-sm font-semibold text-ocean truncate">{txn.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        <span className="text-[11px] text-bluebird/60">{formatDate(txn.date)}</span>
-                        <span className="text-bluebird/30 text-[11px]">·</span>
-                        <span className="text-[11px] text-bluebird/60">{PAYMENT_LABELS[txn.paymentMode]}</span>
-                        {accountLabel && (
-                            <>
-                                <span className="text-bluebird/30 text-[11px]">·</span>
-                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">🏦 {accountLabel}</span>
-                            </>
-                        )}
-                        {txn.cardId?.cardName && (
-                            <>
-                                <span className="text-bluebird/30 text-[11px]">·</span>
-                                <span className="text-[11px] text-bluebird/60">{txn.cardId.cardName}</span>
-                            </>
-                        )}
-                        {txn.billingStatus && (
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${txn.billingStatus === 'unbilled' ? 'bg-yellow-50 text-yellow-600' : 'bg-skylight/20 text-bluebird'}`}>
-                                {txn.billingStatus}
-                            </span>
-                        )}
-                        {txn.expenseType && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-skylight/20 text-bluebird font-medium capitalize">{txn.expenseType}</span>
-                        )}
-                        {txn.category && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-skylight/20 text-bluebird font-medium">{txn.category}</span>
-                        )}
-                    </div>
+
+                    {/* Date + mode on one line */}
+                    <p className="text-[11px] text-bluebird/60 mt-0.5 truncate">
+                        {formatDate(txn.date)} · {PAYMENT_LABELS[txn.paymentMode]}
+                        {accountLabel && ` · ${accountLabel}`}
+                        {txn.cardId?.cardName && ` · ${txn.cardId.cardName}`}
+                    </p>
+
+                    {/* Tags on second line — only if they exist */}
+                    {(txn.billingStatus || txn.expenseType || txn.category) && (
+                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                            {txn.billingStatus && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                    txn.billingStatus === 'unbilled'
+                                        ? 'bg-yellow-50 text-yellow-600'
+                                        : 'bg-skylight/20 text-bluebird'
+                                }`}>
+                                    {txn.billingStatus}
+                                </span>
+                            )}
+                            {txn.expenseType && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-skylight/20 text-bluebird font-medium capitalize">
+                                    {txn.expenseType}
+                                </span>
+                            )}
+                            {txn.category && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-skylight/20 text-bluebird font-medium">
+                                    {txn.category}
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
-            <div className="flex items-center gap-3 ml-4 shrink-0">
+
+            {/* Right */}
+            <div className="flex items-center gap-2 ml-3 shrink-0">
                 <span className={`text-sm font-bold tabular-nums ${isInflow ? 'text-emerald-500' : 'text-red-400'}`}>
                     {isInflow ? '+' : '-'}{formatCurrency(txn.amount)}
                 </span>
-                <div className="flex gap-1.5">
-                    <button onClick={() => onEdit(txn)} className="px-2.5 py-1 text-xs font-medium text-ocean border border-skylight/40 rounded-lg hover:bg-skylight/10 transition-colors duration-150">Edit</button>
-                    <button onClick={() => onDelete(txn._id)} className="px-2.5 py-1 text-xs font-medium text-red-400 border border-red-100 rounded-lg hover:bg-red-50 transition-colors duration-150">Del</button>
+                <div className="flex gap-1">
+                    <button
+                        onClick={() => onEdit(txn)}
+                        className="px-2 py-1 text-xs font-medium text-ocean border border-skylight/40 rounded-lg hover:bg-skylight/10 transition-colors duration-150"
+                    >
+                        Edit
+                    </button>
+                    <button
+                        onClick={() => onDelete(txn._id)}
+                        className="px-2 py-1 text-xs font-medium text-red-400 border border-red-100 rounded-lg hover:bg-red-50 transition-colors duration-150"
+                    >
+                        Del
+                    </button>
                 </div>
             </div>
         </div>
