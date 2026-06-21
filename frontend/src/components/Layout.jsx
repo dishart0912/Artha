@@ -58,6 +58,15 @@ const NAV_ITEMS = [
     </svg>
   ),
 },
+{
+  to: '/emis',
+  label: 'EMIs',
+  icon: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m-6 4h6m-6 4h4m-9-9h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+    </svg>
+  ),
+},
 ];
 
 export default function Layout({ children }) {

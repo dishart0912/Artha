@@ -11,7 +11,7 @@ import Transactions from './pages/Transactions';
 import Receivables   from './pages/Receivables';
 import BankAccounts  from './pages/BankAccounts';
 import RecurringExpenses from './pages/RecurringExpenses';
-
+import EMIs from './pages/EMIs';
 
 // Protected Route wrapper
 function ProtectedRoute({ children }) {
@@ -41,6 +41,7 @@ function AppRoutes() {
    <Route path="/recurring" element={
   <ProtectedRoute><RecurringExpenses /></ProtectedRoute>
 } />
+<Route path="/emis" element={<EMIs />} />
     </Routes>
   );
 }

@@ -6,7 +6,7 @@ const connectDB = require('./config/db');
 const receivableRoutes   = require('./routes/receivableRoutes');
 const bankAccountRoutes  = require('./routes/bankAccountRoutes');
 const recurringRoutes = require('./routes/recurringRoutes');
-
+const emiRoutes = require('./routes/emiRoutes');
 dotenv.config();
 console.log("Loaded FATHER_USER_ID:", process.env.FATHER_USER_ID);
 connectDB();
@@ -42,7 +42,7 @@ app.use('/api/bank-accounts',  bankAccountRoutes);
 
 app.use('/api/recurring', recurringRoutes);
 
-
+app.use('/api/emis', emiRoutes);
 app.get('/', (req, res) => {
     res.send('Artha API is running...');
 });
