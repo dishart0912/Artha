@@ -46,14 +46,18 @@ const getDashboard = async (req, res) => {
             .reduce((sum, t) => sum + t.amount, 0);
 
         // Received receivables this month
-        const receivedReceivables = await Receivable.find({
-            userId,
-            status: 'received',
-            receivedAt: { $gte: monthStart, $lte: monthEnd }
-        });
+        // All received receivables (for popup history)
+const receivedReceivables = await Receivable.find({
+    userId,
+    status: 'received',
+});
 
-        const receivablesInflow = receivedReceivables.reduce((sum, r) => sum + r.amount, 0);
-        const totalInflow = txnInflow + receivablesInflow;
+// Only count this month's receivables in the inflow total
+const receivablesInflow = receivedReceivables
+    .filter(r => new Date(r.receivedAt) >= monthStart && new Date(r.receivedAt) <= monthEnd)
+    .reduce((sum, r) => sum + r.amount, 0);
+
+const totalInflow = txnInflow + receivablesInflow;
 
         const cards = await Card.find({ userId });
 
