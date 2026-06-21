@@ -8,7 +8,131 @@ import { getCards } from '../services/cardService';
 import SpendingChart from '../components/SpendingChart';
 import { getTransactions } from '../services/transactionService';
 
-// ─── Stat Card (clickable) ────────────────────────────────────────────────────
+// ─── Inflow Popup ─────────────────────────────────────────────────────────────
+function InflowPopup({ data, onClose, monthLabel }) {
+  const items = data?.inflowItems || [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center px-4 pb-4 md:pb-0">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-ocean/40 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col animate-scaleIn border border-skylight/20">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-skylight/20 shrink-0">
+          <div>
+            <h3 className="text-sm font-semibold text-ocean">Total Inflow Breakdown</h3>
+            <p className="text-xs text-bluebird mt-0.5">{monthLabel}</p>
+          </div>
+          <button onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-bluebird hover:bg-skylight/20 transition">
+            ✕
+          </button>
+        </div>
+
+        {/* Summary pills */}
+        <div className="flex gap-3 px-5 py-3 border-b border-skylight/10 bg-skylight/5 shrink-0">
+          <div className="flex-1 bg-white rounded-xl px-3 py-2 border border-skylight/30">
+            <p className="text-[10px] text-bluebird/60 uppercase tracking-wider font-semibold">
+              Transactions
+            </p>
+            <p className="text-sm font-bold text-ocean mt-0.5">
+              {formatCurrency(data?.txnInflow || 0)}
+            </p>
+          </div>
+          <div className="flex-1 bg-white rounded-xl px-3 py-2 border border-skylight/30">
+            <p className="text-[10px] text-bluebird/60 uppercase tracking-wider font-semibold">
+              Receivables
+            </p>
+            <p className="text-sm font-bold text-ocean mt-0.5">
+              {formatCurrency(data?.receivablesInflow || 0)}
+            </p>
+          </div>
+          <div className="flex-1 bg-blueberry/5 rounded-xl px-3 py-2 border border-blueberry/20">
+            <p className="text-[10px] text-blueberry/70 uppercase tracking-wider font-semibold">
+              Total
+            </p>
+            <p className="text-sm font-bold text-blueberry mt-0.5">
+              {formatCurrency(data?.totalInflow || 0)}
+            </p>
+          </div>
+        </div>
+
+        {/* Items list */}
+        <div className="overflow-y-auto flex-1 divide-y divide-skylight/20">
+          {items.length === 0 ? (
+            <div className="py-12 text-center text-sm text-bluebird/50">
+              No inflow recorded this month
+            </div>
+          ) : (
+            items.map((item, i) => (
+              <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-skylight/5 transition">
+                <div className="flex items-center gap-3">
+                  {/* Icon */}
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                    item.source === 'receivable' ? 'bg-emerald-50' : 'bg-blueberry/10'
+                  }`}>
+                    {item.source === 'receivable' ? (
+                      <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5 text-blueberry" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m-7 7l7-7 7 7" />
+                      </svg>
+                    )}
+                  </div>
+
+                  {/* Details */}
+                  <div>
+                    <p className="text-sm font-semibold text-ocean">{item.name}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] text-bluebird/60">
+                        {new Date(item.date).toLocaleDateString('en-IN', {
+                          day: 'numeric', month: 'short'
+                        })}
+                      </span>
+                      <span className="text-bluebird/30">·</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                        item.source === 'receivable'
+                          ? 'bg-emerald-50 text-emerald-600'
+                          : 'bg-blueberry/10 text-blueberry'
+                      }`}>
+                        {item.source === 'receivable' ? 'Receivable' : item.mode?.replace('_', ' ')}
+                      </span>
+                      {item.category && item.category !== 'Receivable' && (
+                        <>
+                          <span className="text-bluebird/30">·</span>
+                          <span className="text-[10px] text-bluebird/60">{item.category}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Amount */}
+                <span className="text-sm font-bold text-emerald-500 tabular-nums">
+                  +{formatCurrency(item.amount)}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-skylight/20 shrink-0 bg-skylight/5">
+          <p className="text-[10px] text-bluebird/40 text-center">
+            {items.length} inflow {items.length === 1 ? 'entry' : 'entries'} this month
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, accent, delay = '0ms', onClick }) {
   return (
     <div
@@ -30,8 +154,10 @@ function StatCard({ label, value, sub, accent, delay = '0ms', onClick }) {
           {label}
         </p>
         {onClick && (
-          <svg className={`w-3.5 h-3.5 ${accent ? 'text-skylight/60' : 'text-bluebird/40'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          <svg className={`w-3.5 h-3.5 mt-0.5 ${accent ? 'text-skylight/60' : 'text-bluebird/40'}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
           </svg>
         )}
       </div>
@@ -47,12 +173,12 @@ function StatCard({ label, value, sub, accent, delay = '0ms', onClick }) {
   );
 }
 
-// ─── Skeleton ────────────────────────────────────────────────────────────────
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 function Skeleton({ className }) {
   return <div className={`animate-pulse bg-skylight/30 rounded-xl ${className}`} />;
 }
 
-// ─── Month options helper — last 12 months including current ─────────────────
+// ─── Month options ─────────────────────────────────────────────────────────────
 function getMonthOptions() {
   const options = [];
   const now = new Date();
@@ -65,16 +191,17 @@ function getMonthOptions() {
   return options;
 }
 
-// ─── Dashboard ───────────────────────────────────────────────────────────────
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [data, setData]                 = useState(null);
   const [cards, setCards]               = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
+  const [showInflowPopup, setShowInflowPopup] = useState(false);
 
   const monthOptions = getMonthOptions();
-  const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value); // current month
+  const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -101,7 +228,6 @@ export default function Dashboard() {
     fetchAll();
   }, [location.key, selectedMonth]);
 
-  // ── Navigate to Transactions with filters pre-applied ───────────────────────
   const goToTransactions = (params) => {
     const search = new URLSearchParams(params).toString();
     navigate(`/transactions?${search}`);
@@ -110,7 +236,6 @@ export default function Dashboard() {
   const monthLabel = monthOptions.find(m => m.value === selectedMonth)?.label
     || new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
-  // Build YYYY-MM-DD range for "this month" link (inflow click)
   const [y, m] = selectedMonth.split('-').map(Number);
   const monthStartStr = `${y}-${String(m).padStart(2, '0')}-01`;
   const monthEndStr   = new Date(y, m, 0).toISOString().split('T')[0];
@@ -141,7 +266,8 @@ export default function Dashboard() {
           </svg>
         </div>
         <p className="text-sm text-red-400 font-medium">{error}</p>
-        <button onClick={() => window.location.reload()} className="text-xs text-blueberry hover:underline font-semibold">
+        <button onClick={() => window.location.reload()}
+          className="text-xs text-blueberry hover:underline font-semibold">
           Try again
         </button>
       </div>
@@ -158,8 +284,6 @@ export default function Dashboard() {
             <h2 className="text-xl font-semibold text-ocean">Dashboard</h2>
             <p className="text-sm text-bluebird mt-0.5">{monthLabel} overview</p>
           </div>
-
-          {/* Month selector */}
           <select
             value={selectedMonth}
             onChange={e => setSelectedMonth(e.target.value)}
@@ -172,19 +296,16 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Stat cards (clickable → Transactions) ── */}
+      {/* ── Stat cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+        {/* Total Inflow — opens popup */}
         <StatCard
           label="Total Inflow"
           value={formatCurrency(data?.totalInflow)}
-          sub={`${monthLabel} · tap to view`}
+          sub="tap to see breakdown"
           accent
           delay="0ms"
-          onClick={() => goToTransactions({
-            type: 'inflow',
-            from: monthStartStr,
-            to: monthEndStr
-          })}
+          onClick={() => setShowInflowPopup(true)}
         />
         <StatCard
           label="Fixed Expenses"
@@ -192,10 +313,8 @@ export default function Dashboard() {
           sub="tap to view"
           delay="60ms"
           onClick={() => goToTransactions({
-            type: 'expense',
-            expenseType: 'fixed',
-            from: monthStartStr,
-            to: monthEndStr
+            type: 'expense', expenseType: 'fixed',
+            from: monthStartStr, to: monthEndStr
           })}
         />
         <StatCard
@@ -204,10 +323,8 @@ export default function Dashboard() {
           sub="tap to view"
           delay="120ms"
           onClick={() => goToTransactions({
-            type: 'expense',
-            expenseType: 'variable',
-            from: monthStartStr,
-            to: monthEndStr
+            type: 'expense', expenseType: 'variable',
+            from: monthStartStr, to: monthEndStr
           })}
         />
       </div>
@@ -216,7 +333,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
 
         {/* Credit card outstanding */}
-        <div className="bg-white rounded-2xl border border-skylight/30 shadow-sm animate-fadeIn overflow-hidden" style={{ animationDelay: '180ms' }}>
+        <div className="bg-white rounded-2xl border border-skylight/30 shadow-sm animate-fadeIn overflow-hidden"
+          style={{ animationDelay: '180ms' }}>
           <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-skylight/20">
             <h3 className="text-sm font-semibold text-ocean">Credit Card Outstanding</h3>
             <a href="/cards" className="text-xs text-blueberry font-semibold hover:underline flex items-center gap-1">
@@ -226,7 +344,6 @@ export default function Dashboard() {
               </svg>
             </a>
           </div>
-
           <div className="px-5 pb-2">
             {data?.cardOutstanding?.length > 0 ? (
               <div className="divide-y divide-skylight/20">
@@ -234,7 +351,6 @@ export default function Dashboard() {
                   const pct        = parseFloat(card.utilization) || 0;
                   const barColor   = pct > 80 ? 'bg-red-400' : pct > 50 ? 'bg-yellow-400' : 'bg-blueberry';
                   const badgeClass = pct > 80 ? 'bg-red-50 text-red-500' : pct > 50 ? 'bg-yellow-50 text-yellow-600' : 'bg-skylight/20 text-blueberry';
-
                   return (
                     <div key={index} className="py-4">
                       <div className="flex items-start justify-between mb-2.5">
@@ -247,7 +363,8 @@ export default function Dashboard() {
                         </span>
                       </div>
                       <div className="w-full bg-skylight/20 rounded-full h-1.5 mb-3">
-                        <div className={`h-1.5 rounded-full transition-all duration-700 ${barColor}`} style={{ width: card.utilization }} />
+                        <div className={`h-1.5 rounded-full transition-all duration-700 ${barColor}`}
+                          style={{ width: card.utilization }} />
                       </div>
                       <div className="grid grid-cols-3 text-xs">
                         <div>
@@ -292,6 +409,15 @@ export default function Dashboard() {
       <div className="animate-fadeIn" style={{ animationDelay: '300ms' }}>
         <SpendingChart transactions={transactions} />
       </div>
+
+      {/* ── Inflow Popup ── */}
+      {showInflowPopup && (
+        <InflowPopup
+          data={data}
+          onClose={() => setShowInflowPopup(false)}
+          monthLabel={monthLabel}
+        />
+      )}
 
     </Layout>
   );

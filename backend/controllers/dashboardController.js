@@ -1,5 +1,6 @@
 const Transaction = require('../models/Transaction');
 const Card = require('../models/Card');
+const Receivable = require('../models/Receivable');
 
 const getDashboard = async (req, res) => {
     try {
@@ -21,33 +22,39 @@ const getDashboard = async (req, res) => {
         const monthStart = new Date(targetYear, targetMonth, 1);
         const monthEnd   = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
 
-        // ── Monthly Transactions (now includes received receivables too) ─────
         const transactions = await Transaction.find({
             userId,
             date: { $gte: monthStart, $lte: monthEnd }
         });
 
-        // ── Total Inflow — all inflow transactions, regardless of source ─────
-        const totalInflow = transactions
-            .filter(t => t.transactionType === 'inflow' && t.paymentMode !== 'credit_card')
-            .reduce((sum, t) => sum + t.amount, 0);
+        const inflowTransactions = transactions.filter(
+            t => t.transactionType === 'inflow' && t.paymentMode !== 'credit_card'
+        );
 
-        // ── Direct Expenses ──────────────────────────────────────────────────
+        const txnInflow = inflowTransactions.reduce((sum, t) => sum + t.amount, 0);
+
         const directExpenses = transactions
             .filter(t => t.transactionType === 'expense' && t.paymentMode !== 'credit_card')
             .reduce((sum, t) => sum + t.amount, 0);
 
-        // ── Fixed Expenses ───────────────────────────────────────────────────
         const fixedExpenses = transactions
             .filter(t => t.transactionType === 'expense' && t.expenseType === 'fixed')
             .reduce((sum, t) => sum + t.amount, 0);
 
-        // ── Variable Expenses ────────────────────────────────────────────────
         const variableExpenses = transactions
             .filter(t => t.transactionType === 'expense' && t.expenseType === 'variable')
             .reduce((sum, t) => sum + t.amount, 0);
 
-        // ── Credit Card Outstanding ──────────────────────────────────────────
+        // Received receivables this month
+        const receivedReceivables = await Receivable.find({
+            userId,
+            status: 'received',
+            receivedAt: { $gte: monthStart, $lte: monthEnd }
+        });
+
+        const receivablesInflow = receivedReceivables.reduce((sum, r) => sum + r.amount, 0);
+        const totalInflow = txnInflow + receivablesInflow;
+
         const cards = await Card.find({ userId });
 
         const cardOutstanding = await Promise.all(
@@ -59,20 +66,17 @@ const getDashboard = async (req, res) => {
                     transactionType: 'expense',
                     date: { $gte: monthStart, $lte: monthEnd }
                 });
-
                 const outstanding = cardTransactions.reduce((sum, t) => sum + t.amount, 0);
-
                 const utilization = card.creditLimit > 0
                     ? ((outstanding / card.creditLimit) * 100).toFixed(2)
                     : '0.00';
-
                 return {
-                    cardName: card.cardName,
-                    bankName: card.bankName,
+                    cardName:    card.cardName,
+                    bankName:    card.bankName,
                     creditLimit: card.creditLimit,
                     outstanding,
                     utilization: `${utilization}%`,
-                    dueDate: card.dueDate,
+                    dueDate:     card.dueDate,
                     billingDate: card.billingDate
                 };
             })
@@ -81,10 +85,32 @@ const getDashboard = async (req, res) => {
         res.status(200).json({
             month: `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`,
             totalInflow,
+            txnInflow,
+            receivablesInflow,
             fixedExpenses,
             variableExpenses,
             directExpenses,
-            cardOutstanding
+            cardOutstanding,
+            // Raw items for the popup
+            inflowItems: [
+                ...inflowTransactions.map(t => ({
+                    _id:    t._id,
+                    name:   t.name,
+                    amount: t.amount,
+                    date:   t.date,
+                    source: 'transaction',
+                    mode:   t.paymentMode,
+                    category: t.category,
+                })),
+                ...receivedReceivables.map(r => ({
+                    _id:    r._id,
+                    name:   r.clientName,
+                    amount: r.amount,
+                    date:   r.receivedAt,
+                    source: 'receivable',
+                    description: r.description,
+                })),
+            ].sort((a, b) => new Date(b.date) - new Date(a.date)),
         });
     } catch (error) {
         console.error(error);
