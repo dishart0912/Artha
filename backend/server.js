@@ -36,6 +36,8 @@ app.use('/api/dashboard', dashboardRoutes);
 const recommendationRoutes = require('./routes/recommendationRoutes');
 app.use('/api/recommend', recommendationRoutes);
 
+const categoryRoutes = require('./routes/categoryRoutes');
+app.use('/api/categories', categoryRoutes);
 
 app.use('/api/receivables',    receivableRoutes);
 app.use('/api/bank-accounts',  bankAccountRoutes);

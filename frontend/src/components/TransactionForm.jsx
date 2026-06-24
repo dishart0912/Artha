@@ -1,13 +1,8 @@
 import { useState, useEffect } from 'react';
+import { getCategories, addCategory, deleteCategory } from '../services/categoryService';
 
 // Payment modes that require a bank account to be linked
 const BANK_LINKED_MODES = ['upi', 'debit_card', 'bank_transfer'];
-
-const DEFAULT_CATEGORIES = [
-    'Food & Dining', 'Transport', 'Shopping', 'Entertainment',
-    'Health', 'Bills & Utilities', 'Education', 'Travel',
-    'Groceries', 'Fuel', 'Subscriptions', 'Rent', 'Other'
-];
 
 const defaultForm = {
     name: '',
@@ -21,7 +16,7 @@ const defaultForm = {
     category: ''
 };
 
-export default function TransactionForm({ initial, cards = [], accounts = [], allTransactions = [], onSubmit, onCancel, loading }) {
+export default function TransactionForm({ initial, cards = [], accounts = [], allTransactions = [], onSubmit, onCancel, loading, onCategoryDeleted }) {
     const [form, setForm] = useState(defaultForm);
 
     // ── Seed form when editing ────────────────────────────────────────────────
@@ -45,24 +40,57 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
         }
     }, [initial]);
 
-    const [customCategories, setCustomCategories] = useState([]);
+    const [categories, setCategories] = useState([]);
     const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
 
-    // ── Build category suggestions: defaults + everything father has typed before ──
-    const usedCategories = [...new Set(allTransactions.map(t => t.category).filter(Boolean))];
-    const suggestedCategories = [...new Set([...DEFAULT_CATEGORIES, ...usedCategories, ...customCategories])].sort();
+    // Fetch user categories from database
+    useEffect(() => {
+        const loadCategories = async () => {
+            try {
+                const res = await getCategories();
+                setCategories(res.map(c => c.name));
+            } catch (err) {
+                console.error("Failed to load categories", err);
+            }
+        };
+        loadCategories();
+    }, []);
 
-    const handleAddCategorySubmit = () => {
+    // ── Build category suggestions: DB categories + currently selected category if it's not in the list ──
+    const suggestedCategories = [...new Set([...categories, form.category])].filter(Boolean).sort();
+
+    const handleAddCategorySubmit = async () => {
         const trimmed = newCategoryName.trim();
         if (trimmed) {
-            if (!suggestedCategories.includes(trimmed)) {
-                setCustomCategories(prev => [...prev, trimmed]);
+            try {
+                await addCategory(trimmed);
+                setCategories(prev => [...new Set([...prev, trimmed])].sort());
+                setForm(prev => ({ ...prev, category: trimmed }));
+            } catch (err) {
+                console.error("Failed to add category", err);
             }
-            setForm(prev => ({ ...prev, category: trimmed }));
         }
         setIsAddingNewCategory(false);
         setNewCategoryName('');
+    };
+
+    const handleDeleteCategory = async () => {
+        const categoryToDelete = form.category;
+        if (!categoryToDelete) return;
+
+        if (window.confirm(`Are you sure you want to delete the category "${categoryToDelete}"? This will clear it from all transactions and recurring expenses.`)) {
+            try {
+                await deleteCategory(categoryToDelete);
+                setCategories(prev => prev.filter(c => c !== categoryToDelete));
+                setForm(prev => ({ ...prev, category: '' }));
+                if (onCategoryDeleted) {
+                    onCategoryDeleted();
+                }
+            } catch (err) {
+                console.error("Failed to delete category", err);
+            }
+        }
     };
 
     const handleNewCategoryKeyDown = (e) => {
@@ -332,6 +360,18 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                                     </svg>
                                 </button>
+                                {form.category && (
+                                    <button
+                                        type="button"
+                                        onClick={handleDeleteCategory}
+                                        className="px-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-100 transition flex items-center justify-center shrink-0 animate-fadeIn"
+                                        title="Delete selected category"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>

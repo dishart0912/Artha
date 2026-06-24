@@ -698,6 +698,7 @@ export default function Transactions() {
                         onSubmit={handleSubmit}
                         onCancel={closeModal}
                         loading={formLoading}
+                        onCategoryDeleted={fetchAll}
                     />
                 </Modal>
             )}

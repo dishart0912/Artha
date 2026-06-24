@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import { getRecurring, addRecurring, markPaid, markUnpaid, deleteRecurring } from '../services/recurringService';
+import { getCategories } from '../services/categoryService';
 import { formatCurrency } from '../utils/format';
 
 // ─── Stat Box ────────────────────────────────────────────────────────────────
@@ -34,7 +35,7 @@ function StatBox({ label, value, sub, accent, delay = '0ms' }) {
 }
 
 // ─── Add Form ────────────────────────────────────────────────────────────────
-function RecurringForm({ onSubmit, onCancel, saving }) {
+function RecurringForm({ onSubmit, onCancel, saving, categories = [] }) {
   const [form, setForm] = useState({ name: '', amount: '', category: '', dueDay: '' });
 
   const inputClass = `
@@ -45,7 +46,7 @@ function RecurringForm({ onSubmit, onCancel, saving }) {
   `;
   const labelClass = "block text-[11px] font-semibold text-ocean/50 uppercase tracking-wider mb-1.5";
 
-  const CATEGORIES = [
+  const suggestedCategories = categories.length > 0 ? categories : [
     'Electricity', 'Internet', 'Rent', 'Water', 'Gas',
     'Insurance', 'EMI', 'Maintenance', 'Subscription', 'Other'
   ];
@@ -88,7 +89,7 @@ function RecurringForm({ onSubmit, onCancel, saving }) {
             className={inputClass}
           >
             <option value="">— Select —</option>
-            {CATEGORIES.map(c => (
+            {suggestedCategories.map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
@@ -134,14 +135,18 @@ function RecurringForm({ onSubmit, onCancel, saving }) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 export default function RecurringExpenses() {
   const [expenses, setExpenses]         = useState([]);
+  const [categories, setCategories]     = useState([]);
   const [loading, setLoading]           = useState(true);
   const [showModal, setShowModal]       = useState(false);
   const [saving, setSaving]             = useState(false);
 
   const fetchData = async () => {
     try {
-      const data = await getRecurring();
+      const [data, cats] = await Promise.all([getRecurring(), getCategories()]);
       setExpenses(data);
+      setCategories(cats.map(c => c.name));
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -365,6 +370,7 @@ export default function RecurringExpenses() {
             onSubmit={handleAdd}
             onCancel={() => setShowModal(false)}
             saving={saving}
+            categories={categories}
           />
         </Modal>
       )}
