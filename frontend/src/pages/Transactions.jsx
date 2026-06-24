@@ -698,7 +698,18 @@ export default function Transactions() {
                         onSubmit={handleSubmit}
                         onCancel={closeModal}
                         loading={formLoading}
-                        onCategoryDeleted={fetchAll}
+                        onCategoryDeleted={(deletedCat) => {
+                            fetchAll();
+                            if (filterCategory === deletedCat) {
+                                setFilterCategory('all');
+                            }
+                        }}
+                        onCategoryUpdated={(oldName, newName) => {
+                            fetchAll();
+                            if (filterCategory === oldName) {
+                                setFilterCategory(newName);
+                            }
+                        }}
                     />
                 </Modal>
             )}

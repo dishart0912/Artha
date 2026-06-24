@@ -111,8 +111,60 @@ const deleteCategory = async (req, res) => {
     }
 };
 
+const updateCategory = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const { name } = req.params;
+        const { newName } = req.body;
+
+        if (!name || !newName || !newName.trim()) {
+            return res.status(400).json({ message: 'Category name and new name are required' });
+        }
+
+        const trimmedNewName = newName.trim();
+
+        // Check if category already exists (case-insensitive) for the user
+        const existing = await Category.findOne({
+            userId,
+            name: { $regex: new RegExp(`^${trimmedNewName}$`, 'i') }
+        });
+
+        if (existing) {
+            return res.status(400).json({ message: 'Category already exists' });
+        }
+
+        // Update the category document
+        const updated = await Category.findOneAndUpdate(
+            { userId, name },
+            { name: trimmedNewName },
+            { new: true }
+        );
+
+        if (!updated) {
+            return res.status(404).json({ message: 'Category not found' });
+        }
+
+        // Update transactions with this category to new name
+        await Transaction.updateMany(
+            { userId, category: name },
+            { $set: { category: trimmedNewName } }
+        );
+
+        // Update recurring expenses with this category to new name
+        await RecurringExpense.updateMany(
+            { userId, category: name },
+            { $set: { category: trimmedNewName } }
+        );
+
+        res.status(200).json(updated);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getCategories,
     addCategory,
-    deleteCategory
+    deleteCategory,
+    updateCategory
 };

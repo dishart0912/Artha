@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getCategories, addCategory, deleteCategory } from '../services/categoryService';
+import { getCategories, addCategory, deleteCategory, updateCategory } from '../services/categoryService';
 
 // Payment modes that require a bank account to be linked
 const BANK_LINKED_MODES = ['upi', 'debit_card', 'bank_transfer'];
@@ -16,7 +16,7 @@ const defaultForm = {
     category: ''
 };
 
-export default function TransactionForm({ initial, cards = [], accounts = [], allTransactions = [], onSubmit, onCancel, loading, onCategoryDeleted }) {
+export default function TransactionForm({ initial, cards = [], accounts = [], allTransactions = [], onSubmit, onCancel, loading, onCategoryDeleted, onCategoryUpdated }) {
     const [form, setForm] = useState(defaultForm);
 
     // ── Seed form when editing ────────────────────────────────────────────────
@@ -43,6 +43,8 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
     const [categories, setCategories] = useState([]);
     const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
+    const [isEditingCategory, setIsEditingCategory] = useState(false);
+    const [editCategoryName, setEditCategoryName] = useState('');
 
     // Fetch user categories from database
     useEffect(() => {
@@ -85,7 +87,7 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                 setCategories(prev => prev.filter(c => c !== categoryToDelete));
                 setForm(prev => ({ ...prev, category: '' }));
                 if (onCategoryDeleted) {
-                    onCategoryDeleted();
+                    onCategoryDeleted(categoryToDelete);
                 }
             } catch (err) {
                 console.error("Failed to delete category", err);
@@ -97,6 +99,34 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
         if (e.key === 'Enter') {
             e.preventDefault();
             handleAddCategorySubmit();
+        }
+    };
+
+    const handleEditCategorySubmit = async () => {
+        const oldName = form.category;
+        const newName = editCategoryName?.trim();
+        if (!oldName || !newName || oldName === newName) {
+            setIsEditingCategory(false);
+            return;
+        }
+
+        try {
+            await updateCategory(oldName, newName);
+            setCategories(prev => prev.map(c => c === oldName ? newName : c).sort());
+            setForm(prev => ({ ...prev, category: newName }));
+            setIsEditingCategory(false);
+            if (onCategoryUpdated) {
+                onCategoryUpdated(oldName, newName);
+            }
+        } catch (err) {
+            console.error("Failed to edit category", err);
+        }
+    };
+
+    const handleEditCategoryKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleEditCategorySubmit();
         }
     };
 
@@ -338,6 +368,38 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                                     </svg>
                                 </button>
                             </div>
+                        ) : isEditingCategory ? (
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={editCategoryName}
+                                    onChange={e => setEditCategoryName(e.target.value)}
+                                    onKeyDown={handleEditCategoryKeyDown}
+                                    placeholder="Category name"
+                                    className={`${inputCls} flex-1`}
+                                    autoFocus
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleEditCategorySubmit}
+                                    className="px-3 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-100 transition flex items-center justify-center shrink-0"
+                                    title="Save Category"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsEditingCategory(false); setEditCategoryName(''); }}
+                                    className="px-3 border border-skylight/40 text-bluebird/60 rounded-xl hover:bg-skylight/10 transition flex items-center justify-center shrink-0"
+                                    title="Cancel"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
                         ) : (
                             <div className="flex gap-2">
                                 <select
@@ -361,16 +423,31 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                                     </svg>
                                 </button>
                                 {form.category && (
-                                    <button
-                                        type="button"
-                                        onClick={handleDeleteCategory}
-                                        className="px-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-100 transition flex items-center justify-center shrink-0 animate-fadeIn"
-                                        title="Delete selected category"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                        </svg>
-                                    </button>
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsEditingCategory(true);
+                                                setEditCategoryName(form.category);
+                                            }}
+                                            className="px-3 bg-blue-50 border border-blue-200 text-blue-600 rounded-xl hover:bg-blue-100 transition flex items-center justify-center shrink-0 animate-fadeIn"
+                                            title="Edit selected category"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDeleteCategory}
+                                            className="px-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-100 transition flex items-center justify-center shrink-0 animate-fadeIn"
+                                            title="Delete selected category"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    </>
                                 )}
                             </div>
                         )}
