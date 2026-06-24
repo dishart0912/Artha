@@ -401,6 +401,19 @@ export default function Transactions() {
         });
     }, [transactions, filterType, filterMode, filterExpense, filterBilling, filterCategory, search, selectedDate]);
 
+    const filteredTotals = useMemo(() => {
+        let inflow = 0;
+        let expense = 0;
+        filtered.forEach(txn => {
+            if (txn.transactionType === 'inflow') {
+                inflow += txn.amount;
+            } else {
+                expense += txn.amount;
+            }
+        });
+        return { inflow, expense, net: inflow - expense };
+    }, [filtered]);
+
     const openAdd    = ()    => { setEditingTxn(null); setShowModal(true); };
     const openEdit   = (txn) => { setEditingTxn(txn);  setShowModal(true); };
     const closeModal = ()    => { setShowModal(false);  setEditingTxn(null); };
@@ -582,6 +595,62 @@ export default function Transactions() {
                             ✕ Clear date
                         </button>
                     )}
+                </div>
+            )}
+
+            {/* ── Category filter sum summary ── */}
+            {activeTab !== 'cards' && filterCategory !== 'all' && (
+                <div className="mb-5 p-4 rounded-2xl bg-gradient-to-r from-blueberry/10 to-ocean/5 border border-blueberry/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blueberry/10 flex items-center justify-center text-blueberry shrink-0">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p className="text-xs text-bluebird/70 font-medium">Category Summary</p>
+                            <p className="text-sm font-bold text-ocean">
+                                Showing results for <span className="text-blueberry font-semibold">"{filterCategory}"</span>
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-4 items-center sm:text-right">
+                        {filteredTotals.expense === 0 && filteredTotals.inflow === 0 ? (
+                            <div>
+                                <p className="text-[10px] text-bluebird/60 font-semibold uppercase tracking-wider">Total Amount</p>
+                                <p className="text-base font-extrabold text-ocean tabular-nums">
+                                    {formatCurrency(0)}
+                                </p>
+                            </div>
+                        ) : (
+                            <>
+                                {filteredTotals.expense > 0 && (
+                                    <div>
+                                        <p className="text-[10px] text-bluebird/60 font-semibold uppercase tracking-wider">Total Spent</p>
+                                        <p className="text-base font-extrabold text-red-500 tabular-nums">
+                                            {formatCurrency(filteredTotals.expense)}
+                                        </p>
+                                    </div>
+                                )}
+                                {filteredTotals.inflow > 0 && (
+                                    <div>
+                                        <p className="text-[10px] text-bluebird/60 font-semibold uppercase tracking-wider">Total Received</p>
+                                        <p className="text-base font-extrabold text-emerald-500 tabular-nums">
+                                            {formatCurrency(filteredTotals.inflow)}
+                                        </p>
+                                    </div>
+                                )}
+                                {filteredTotals.expense > 0 && filteredTotals.inflow > 0 && (
+                                    <div className="border-l border-skylight/30 pl-4">
+                                        <p className="text-[10px] text-bluebird/60 font-semibold uppercase tracking-wider">Net Amount</p>
+                                        <p className={`text-base font-extrabold tabular-nums ${filteredTotals.net >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                            {filteredTotals.net >= 0 ? '+' : ''}{formatCurrency(filteredTotals.net)}
+                                        </p>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 

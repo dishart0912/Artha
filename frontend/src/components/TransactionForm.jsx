@@ -45,9 +45,32 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
         }
     }, [initial]);
 
+    const [customCategories, setCustomCategories] = useState([]);
+    const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+
     // ── Build category suggestions: defaults + everything father has typed before ──
     const usedCategories = [...new Set(allTransactions.map(t => t.category).filter(Boolean))];
-    const suggestedCategories = [...new Set([...DEFAULT_CATEGORIES, ...usedCategories])].sort();
+    const suggestedCategories = [...new Set([...DEFAULT_CATEGORIES, ...usedCategories, ...customCategories])].sort();
+
+    const handleAddCategorySubmit = () => {
+        const trimmed = newCategoryName.trim();
+        if (trimmed) {
+            if (!suggestedCategories.includes(trimmed)) {
+                setCustomCategories(prev => [...prev, trimmed]);
+            }
+            setForm(prev => ({ ...prev, category: trimmed }));
+        }
+        setIsAddingNewCategory(false);
+        setNewCategoryName('');
+    };
+
+    const handleNewCategoryKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleAddCategorySubmit();
+        }
+    };
 
     // ── Derived flags ─────────────────────────────────────────────────────────
     const showAccountDropdown = BANK_LINKED_MODES.includes(form.paymentMode);
@@ -255,19 +278,62 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                     </div>
                     <div>
                         <label className={labelCls}>Category</label>
-                        <input
-                            type="text"
-                            list="category-suggestions"
-                            value={form.category}
-                            onChange={set('category')}
-                            placeholder="Type or pick a category"
-                            className={inputCls}
-                        />
-                        <datalist id="category-suggestions">
-                            {suggestedCategories.map(cat => (
-                                <option key={cat} value={cat} />
-                            ))}
-                        </datalist>
+                        {isAddingNewCategory ? (
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={newCategoryName}
+                                    onChange={e => setNewCategoryName(e.target.value)}
+                                    onKeyDown={handleNewCategoryKeyDown}
+                                    placeholder="New category name"
+                                    className={`${inputCls} flex-1`}
+                                    autoFocus
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleAddCategorySubmit}
+                                    className="px-3 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-100 transition flex items-center justify-center shrink-0"
+                                    title="Add Category"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsAddingNewCategory(false); setNewCategoryName(''); }}
+                                    className="px-3 border border-skylight/40 text-bluebird/60 rounded-xl hover:bg-skylight/10 transition flex items-center justify-center shrink-0"
+                                    title="Cancel"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex gap-2">
+                                <select
+                                    value={form.category}
+                                    onChange={set('category')}
+                                    className={`${inputCls} flex-1`}
+                                >
+                                    <option value="">Select a category</option>
+                                    {suggestedCategories.map(cat => (
+                                        <option key={cat} value={cat}>{cat}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddingNewCategory(true)}
+                                    className="px-3 bg-skylight/20 border border-skylight/40 text-ocean rounded-xl hover:bg-skylight/30 hover:border-blueberry/30 transition flex items-center justify-center shrink-0"
+                                    title="Add new category"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                                    </svg>
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
