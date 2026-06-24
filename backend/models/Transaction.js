@@ -51,7 +51,7 @@ const transactionSchema = new mongoose.Schema({
     },
     billingStatus: {
         type: String,
-        enum: ['billed', 'unbilled'],
+        enum: ['billed', 'unbilled', 'paid'],
         default: null
     },
 

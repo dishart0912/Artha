@@ -6,10 +6,11 @@ import { formatCurrency } from '../utils/format';
 import CardCalendar from '../components/CardCalendar';
 import { getCards } from '../services/cardService';
 import SpendingChart from '../components/SpendingChart';
-import { getTransactions } from '../services/transactionService';
+import { getTransactions, payCardBill } from '../services/transactionService';
+import DetailsPopup from '../components/DetailsPopup';
 
 // ─── Inflow Popup ─────────────────────────────────────────────────────────────
-function InflowPopup({ data, onClose, monthLabel }) {
+function InflowPopup({ data, onClose, monthLabel, onItemClick }) {
   const items = data?.inflowItems || [];
 
   return (
@@ -68,7 +69,11 @@ function InflowPopup({ data, onClose, monthLabel }) {
             </div>
           ) : (
             items.map((item, i) => (
-              <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-skylight/5 transition">
+              <div key={i}
+                onClick={() => onItemClick(item)}
+                className="flex items-center justify-between px-5 py-3.5 hover:bg-skylight/5 transition cursor-pointer"
+                title="Click to view details"
+              >
                 <div className="flex items-center gap-3">
                   {/* Icon */}
                   <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
@@ -126,6 +131,88 @@ function InflowPopup({ data, onClose, monthLabel }) {
           <p className="text-[10px] text-bluebird/40 text-center">
             {items.length} inflow {items.length === 1 ? 'entry' : 'entries'} this month
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Card Transactions Popup ─────────────────────────────────────────────────────
+function CardTransactionsPopup({ card, onClose, type, onItemClick }) {
+  const items = type === 'billed' ? card.billedTransactions : card.unbilledTransactions;
+  const title = type === 'billed' ? 'Billed Transactions' : 'Unbilled Transactions';
+  const rawTotal = type === 'billed' ? card.totalBilledExpenses : card.totalUnbilledExpenses;
+  const paymentsApplied = type === 'billed' ? card.paymentsAppliedToBilled : card.paymentsAppliedToUnbilled;
+  const amount = type === 'billed' ? card.billedAmount : card.unbilledAmount;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center px-4 pb-4 md:pb-0">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-ocean/40 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col animate-scaleIn border border-skylight/20">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-skylight/20 shrink-0">
+          <div>
+            <h3 className="text-sm font-semibold text-ocean">{card.cardName} – {title}</h3>
+            <p className="text-xs text-bluebird mt-0.5">{card.bankName}</p>
+          </div>
+          <button onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-bluebird hover:bg-skylight/20 transition">
+            ✕
+          </button>
+        </div>
+
+        {/* Summary pill */}
+        <div className="px-5 py-4 border-b border-skylight/10 bg-skylight/5 shrink-0 space-y-2">
+          <div className="flex items-center justify-between text-xs text-bluebird/70">
+            <span>Total Expenses:</span>
+            <span className="font-semibold text-ocean">{formatCurrency(rawTotal || 0)}</span>
+          </div>
+          {paymentsApplied > 0 && (
+            <div className="flex items-center justify-between text-xs text-emerald-600">
+              <span>Payments Applied:</span>
+              <span className="font-semibold">-{formatCurrency(paymentsApplied)}</span>
+            </div>
+          )}
+          <div className="border-t border-skylight/30 pt-2 flex items-center justify-between font-bold text-sm">
+            <span className="text-ocean">Net {type === 'billed' ? 'Billed' : 'Unbilled'} Amount:</span>
+            <span className={type === 'billed' ? 'text-red-500' : 'text-ocean'}>
+              {formatCurrency(amount || 0)}
+            </span>
+          </div>
+        </div>
+
+        {/* Items list */}
+        <div className="overflow-y-auto flex-1 divide-y divide-skylight/20">
+          {items.length === 0 ? (
+            <div className="py-12 text-center text-sm text-bluebird/50">
+              No transactions found
+            </div>
+          ) : (
+            items.map((item, i) => (
+              <div key={item._id || i}
+                onClick={() => onItemClick(item)}
+                className="flex items-center justify-between px-5 py-3.5 hover:bg-skylight/5 transition animate-fadeIn cursor-pointer"
+                title="Click to view details"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-ocean">{item.name}</p>
+                  <p className="text-[10px] text-bluebird/60 mt-0.5">
+                    {new Date(item.date).toLocaleDateString('en-IN', {
+                      day: 'numeric', month: 'short', year: 'numeric'
+                    })}
+                  </p>
+                </div>
+                <span className="text-sm font-bold text-red-400 tabular-nums">
+                  -{formatCurrency(item.amount)}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -200,33 +287,51 @@ export default function Dashboard() {
   const [error, setError]               = useState('');
   const [showInflowPopup, setShowInflowPopup] = useState(false);
 
+  const [selectedCard, setSelectedCard] = useState(null);
+  const [popupType, setPopupType]       = useState(null); // 'billed' | 'unbilled'
+  const [payingCardId, setPayingCardId] = useState(null);
+
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
 
   const location = useLocation();
   const navigate = useNavigate();
 
+  const fetchAll = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setError('');
+    try {
+      const [dashboard, cardList, txnList] = await Promise.all([
+        getDashboard(selectedMonth),
+        getCards(),
+        getTransactions()
+      ]);
+      setData(dashboard);
+      setCards(cardList);
+      setTransactions(txnList);
+    } catch (err) {
+      setError('Failed to load dashboard');
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchAll = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const [dashboard, cardList, txnList] = await Promise.all([
-          getDashboard(selectedMonth),
-          getCards(),
-          getTransactions()
-        ]);
-        setData(dashboard);
-        setCards(cardList);
-        setTransactions(txnList);
-      } catch (err) {
-        setError('Failed to load dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAll();
+    fetchAll(true);
   }, [location.key, selectedMonth]);
+
+  const handlePayBill = async (cardId) => {
+    if (!window.confirm('Mark this credit card bill as paid? Billed amount will go to 0, and those transactions will be cleared from outstanding balance.')) return;
+    setPayingCardId(cardId);
+    try {
+      await payCardBill(cardId);
+      await fetchAll(false);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to process payment');
+    } finally {
+      setPayingCardId(null);
+    }
+  };
 
   const goToTransactions = (params) => {
     const search = new URLSearchParams(params).toString();
@@ -354,30 +459,76 @@ export default function Dashboard() {
                   return (
                     <div key={index} className="py-4">
                       <div className="flex items-start justify-between mb-2.5">
-                        <div>
-                          <p className="text-sm font-semibold text-ocean leading-none">{card.cardName}</p>
-                          <p className="text-xs text-bluebird mt-0.5">{card.bankName}</p>
+                        <div className="cursor-pointer flex-1" onClick={() => { setSelectedCard(card); setPopupType('billed'); }} title="Click to view transactions">
+                          <p className="text-sm font-semibold text-ocean hover:text-blueberry flex items-center gap-1 leading-none">
+                            {card.cardName}
+                            <svg className="w-3.5 h-3.5 text-bluebird/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </p>
+                          <p className="text-xs text-bluebird mt-1">{card.bankName} · Limit {formatCurrency(card.creditLimit)}</p>
                         </div>
-                        <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${badgeClass}`}>
-                          {card.utilization} used
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {card.billedAmount > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePayBill(card._id);
+                              }}
+                              disabled={payingCardId === card._id}
+                              className="px-2.5 py-1 text-[11px] font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg shadow-sm hover:shadow transition disabled:opacity-50"
+                            >
+                              {payingCardId === card._id ? 'Paying…' : 'Paid'}
+                            </button>
+                          )}
+                          <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${badgeClass}`}>
+                            {card.utilization} used
+                          </span>
+                        </div>
                       </div>
                       <div className="w-full bg-skylight/20 rounded-full h-1.5 mb-3">
                         <div className={`h-1.5 rounded-full transition-all duration-700 ${barColor}`}
                           style={{ width: card.utilization }} />
                       </div>
-                      <div className="grid grid-cols-3 text-xs">
-                        <div>
-                          <p className="text-bluebird/70">Outstanding</p>
-                          <p className="text-ocean font-semibold mt-0.5">{formatCurrency(card.outstanding)}</p>
+                      <div className="grid grid-cols-3 text-xs border border-skylight/30 bg-clouds/40 rounded-xl p-2.5 mt-2.5 gap-2">
+                        <div className="cursor-pointer hover:bg-skylight/20 p-1.5 rounded-lg transition"
+                          onClick={() => { setSelectedCard(card); setPopupType('billed'); }}
+                          title="Click to view billed transactions">
+                          <p className="text-bluebird/70 font-medium">Billed</p>
+                          <p className="text-red-500 font-bold mt-0.5">{formatCurrency(card.billedAmount)}</p>
                         </div>
-                        <div className="text-center">
-                          <p className="text-bluebird/70">Limit</p>
-                          <p className="text-ocean font-semibold mt-0.5">{formatCurrency(card.creditLimit)}</p>
+                        <div className="cursor-pointer hover:bg-skylight/20 p-1.5 rounded-lg transition"
+                          onClick={() => { setSelectedCard(card); setPopupType('unbilled'); }}
+                          title="Click to view unbilled transactions">
+                          <p className="text-bluebird/70 font-medium">Unbilled</p>
+                          <p className="text-ocean font-bold mt-0.5">{formatCurrency(card.unbilledAmount)}</p>
                         </div>
-                        <div className="text-right">
-                          <p className="text-bluebird/70">Due date</p>
-                          <p className="text-ocean font-semibold mt-0.5">Day {card.dueDate}</p>
+                        <div className="p-1.5 rounded-lg">
+                          <p className="text-bluebird/70 font-medium">Outstanding</p>
+                          <p className="text-ocean font-bold mt-0.5">{formatCurrency(card.outstanding)}</p>
+                        </div>
+                      </div>
+
+                      {/* Statement details */}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3 pt-3 border-t border-skylight/20 text-[11px] text-bluebird/80">
+                        <div className="flex justify-between">
+                          <span>Statement Date:</span>
+                          <span className="font-semibold text-ocean">
+                            {card.statementDate ? new Date(card.statementDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Due Date:</span>
+                          <span className="font-semibold text-ocean">
+                            {card.dueDate ? new Date(card.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between col-span-2">
+                          <span>Available Credit:</span>
+                          <span className="font-semibold text-ocean">
+                            {formatCurrency(card.availableCredit || 0)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -416,6 +567,15 @@ export default function Dashboard() {
           data={data}
           onClose={() => setShowInflowPopup(false)}
           monthLabel={monthLabel}
+        />
+      )}
+
+      {/* ── Card Transactions Popup ── */}
+      {selectedCard && popupType && (
+        <CardTransactionsPopup
+          card={selectedCard}
+          type={popupType}
+          onClose={() => { setSelectedCard(null); setPopupType(null); }}
         />
       )}
 

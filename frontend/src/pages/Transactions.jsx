@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import TransactionForm from '../components/TransactionForm';
+import DetailsPopup from '../components/DetailsPopup';
 import { getTransactions, addTransaction, updateTransaction, deleteTransaction } from '../services/transactionService';
 import { getCards } from '../services/cardService';
 import { getBankAccounts } from '../services/bankAccountService';
@@ -36,7 +37,7 @@ function FilterPill({ active, onClick, children }) {
 }
 
 // ─── Transaction row ──────────────────────────────────────────────────────────
-function TxnRow({ txn, index, onEdit, onDelete }) {
+function TxnRow({ txn, index, onEdit, onDelete, onRowClick }) {
     const isInflow = txn.transactionType === 'inflow';
     const accountLabel = txn.accountId
         ? `••${txn.accountId.lastFourDigits || txn.accountId.bankName}`
@@ -44,7 +45,8 @@ function TxnRow({ txn, index, onEdit, onDelete }) {
 
     return (
         <div
-            className="flex items-center justify-between px-4 py-3.5 animate-fadeIn hover:bg-skylight/5 transition-colors duration-150"
+            onClick={() => onRowClick(txn)}
+            className="flex items-center justify-between px-4 py-3.5 animate-fadeIn hover:bg-skylight/5 transition-colors duration-150 cursor-pointer"
             style={{ animationDelay: `${index * 30}ms` }}
         >
             {/* Left */}
@@ -103,13 +105,13 @@ function TxnRow({ txn, index, onEdit, onDelete }) {
                 </span>
                 <div className="flex gap-1">
                     <button
-                        onClick={() => onEdit(txn)}
+                        onClick={(e) => { e.stopPropagation(); onEdit(txn); }}
                         className="px-2 py-1 text-xs font-medium text-ocean border border-skylight/40 rounded-lg hover:bg-skylight/10 transition-colors duration-150"
                     >
                         Edit
                     </button>
                     <button
-                        onClick={() => onDelete(txn._id)}
+                        onClick={(e) => { e.stopPropagation(); onDelete(txn._id); }}
                         className="px-2 py-1 text-xs font-medium text-red-400 border border-red-100 rounded-lg hover:bg-red-50 transition-colors duration-150"
                     >
                         Del
@@ -347,6 +349,7 @@ export default function Transactions() {
     const [editingTxn, setEditingTxn]     = useState(null);
     const [formLoading, setFormLoading]   = useState(false);
     const [error, setError]               = useState('');
+    const [selectedDetailsItem, setSelectedDetailsItem] = useState(null);
 
     const [filterType, setFilterType]         = useState('all');
     const [filterMode, setFilterMode]         = useState('all');
@@ -678,7 +681,7 @@ export default function Transactions() {
                 ) : (
                     <div className="bg-white rounded-2xl border border-skylight/30 shadow-sm overflow-hidden animate-fadeIn divide-y divide-skylight/20">
                         {filtered.map((txn, i) => (
-                            <TxnRow key={txn._id} txn={txn} index={i} onEdit={openEdit} onDelete={handleDelete} />
+                            <TxnRow key={txn._id} txn={txn} index={i} onEdit={openEdit} onDelete={handleDelete} onRowClick={setSelectedDetailsItem} />
                         ))}
                     </div>
                 )
@@ -697,6 +700,13 @@ export default function Transactions() {
                         loading={formLoading}
                     />
                 </Modal>
+            )}
+            {/* ── Details Popup ── */}
+            {selectedDetailsItem && (
+                <DetailsPopup
+                    item={selectedDetailsItem}
+                    onClose={() => setSelectedDetailsItem(null)}
+                />
             )}
         </Layout>
     );

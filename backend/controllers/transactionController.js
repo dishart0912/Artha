@@ -209,4 +209,90 @@ const deleteTransaction = async (req, res) => {
     }
 };
 
-module.exports = { addTransaction, getTransactions, updateTransaction, deleteTransaction };
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/transactions/pay-bill
+// ─────────────────────────────────────────────────────────────────────────────
+const payCardBill = async (req, res) => {
+    try {
+        const { cardId } = req.body;
+        if (!cardId) {
+            return res.status(400).json({ message: 'Card ID is required' });
+        }
+
+        const card = await Card.findById(cardId);
+        if (!card) {
+            return res.status(404).json({ message: 'Card not found' });
+        }
+
+        // Fetch all transactions (expenses and inflows) for this card
+        const cardTransactions = await Transaction.find({
+            userId: req.user._id,
+            cardId,
+            paymentMode: 'credit_card'
+        });
+
+        const expenses = cardTransactions.filter(t => t.transactionType === 'expense');
+        const payments = cardTransactions.filter(t => t.transactionType === 'inflow');
+        const totalPayments = payments.reduce((sum, t) => sum + t.amount, 0);
+
+        const getStatementDateForTxn = (txnDate, billingDate) => {
+            const d = new Date(txnDate);
+            let year = d.getFullYear();
+            let month = d.getMonth();
+            if (d.getDate() > billingDate) {
+                month += 1;
+                if (month > 11) {
+                    month = 0;
+                    year += 1;
+                }
+            }
+            return new Date(year, month, billingDate, 23, 59, 59, 999);
+        };
+
+        const today = new Date();
+        let stmtYear = today.getFullYear();
+        let stmtMonth = today.getMonth();
+        if (today.getDate() < card.billingDate) {
+            stmtMonth -= 1;
+            if (stmtMonth < 0) {
+                stmtMonth = 11;
+                stmtYear -= 1;
+            }
+        }
+        const latestStatementDate = new Date(stmtYear, stmtMonth, card.billingDate, 23, 59, 59, 999);
+
+        const billedExpenses = expenses.filter(t => {
+            const stmtDate = getStatementDateForTxn(t.date, card.billingDate);
+            return stmtDate <= latestStatementDate;
+        });
+
+        const totalBilledExpenses = billedExpenses.reduce((sum, t) => sum + t.amount, 0);
+        const billedAmount = Math.max(0, totalBilledExpenses - totalPayments);
+
+        if (billedAmount <= 0) {
+            return res.status(400).json({ message: 'Billed amount is already paid / zero.' });
+        }
+
+        // Create an inflow payment transaction of amount = billedAmount
+        const paymentTxn = await Transaction.create({
+            userId: req.user._id,
+            name: `Card Payment - ${card.cardName}`,
+            amount: billedAmount,
+            date: new Date(),
+            paymentMode: 'credit_card',
+            transactionType: 'inflow',
+            cardId: card._id,
+            billingStatus: null
+        });
+
+        res.status(200).json({
+            message: 'Credit card bill paid successfully',
+            payment: paymentTxn
+        });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { addTransaction, getTransactions, updateTransaction, deleteTransaction, payCardBill };

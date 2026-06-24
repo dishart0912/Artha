@@ -4,3 +4,4 @@ export const getTransactions  = ()         => api.get('/api/transactions').then(
 export const addTransaction   = (data)     => api.post('/api/transactions', data).then(r => r.data);
 export const updateTransaction = (id, data) => api.put(`/api/transactions/${id}`, data).then(r => r.data);
 export const deleteTransaction = (id)      => api.delete(`/api/transactions/${id}`).then(r => r.data);
+export const payCardBill       = (cardId)   => api.post('/api/transactions/pay-bill', { cardId }).then(r => r.data);

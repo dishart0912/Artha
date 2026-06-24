@@ -4,6 +4,8 @@ import Modal from '../components/Modal';
 import { getReceivables, addReceivable, markReceived, deleteReceivable } from '../services/receivableService';
 import { getBankAccounts } from '../services/bankAccountService';
 import { formatCurrency } from '../utils/format';
+import DetailsPopup from '../components/DetailsPopup';
+
 
 const BANK_LINKED_MODES = ['upi', 'debit_card', 'bank_transfer'];
 
@@ -247,6 +249,8 @@ export default function Receivables() {
   const [search, setSearch]           = useState('');
 
   const [receivingItem, setReceivingItem] = useState(null); // receivable being marked received
+  const [selectedDetailsItem, setSelectedDetailsItem] = useState(null);
+
 
   const fetchData = async () => {
     try {
@@ -321,7 +325,7 @@ export default function Receivables() {
       </div>
 
       {/* ── Stat boxes ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <StatBox
           label="Total Pending"
           value={formatCurrency(pending.reduce((s, r) => s + r.amount, 0))}
@@ -374,30 +378,40 @@ export default function Receivables() {
           </div>
           <div className="divide-y divide-skylight/20">
             {pending.map(r => (
-              <div key={r._id} className="px-5 py-4 flex items-center justify-between gap-4">
+              <div 
+                key={r._id} 
+                onClick={() => setSelectedDetailsItem(r)}
+                className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-skylight/5 transition-colors"
+              >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-ocean truncate">{r.clientName}</p>
-                  {r.description && <p className="text-xs text-bluebird mt-0.5">{r.description}</p>}
+                  <div className="flex items-center justify-between sm:justify-start gap-2 mb-1 sm:mb-0">
+                    <p className="text-sm font-semibold text-ocean truncate sm:max-w-[200px] md:max-w-xs">{r.clientName}</p>
+                    <span className="sm:hidden text-sm font-bold text-ocean shrink-0">{formatCurrency(r.amount)}</span>
+                  </div>
+                  {r.description && <p className="text-xs text-bluebird truncate mb-1 sm:mb-0">{r.description}</p>}
                   {r.dueDate && (
-                    <p className="text-xs text-bluebird/60 mt-0.5">
+                    <p className="text-xs text-bluebird/60">
                       Due: {new Date(r.dueDate).toLocaleDateString('en-IN')}
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <p className="text-sm font-bold text-ocean">{formatCurrency(r.amount)}</p>
-                  <button
-                    onClick={() => setReceivingItem(r)}
-                    className="px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-600 text-xs font-semibold rounded-lg border border-green-200 transition-all duration-200"
-                  >
-                    ✓ Received
-                  </button>
-                  <button
-                    onClick={() => handleDelete(r._id)}
-                    className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-400 text-xs font-semibold rounded-lg border border-red-200 transition-all duration-200"
-                  >
-                    Delete
-                  </button>
+                
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t border-skylight/10 sm:border-none shrink-0">
+                  <span className="hidden sm:inline text-sm font-bold text-ocean">{formatCurrency(r.amount)}</span>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setReceivingItem(r); }}
+                      className="flex-1 sm:flex-initial text-center px-3.5 py-2 bg-green-50 hover:bg-green-100 text-green-600 text-xs font-semibold rounded-lg border border-green-200 transition-all duration-200"
+                    >
+                      ✓ Received
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(r._id); }}
+                      className="flex-1 sm:flex-initial text-center px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-400 text-xs font-semibold rounded-lg border border-red-200 transition-all duration-200"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -413,25 +427,35 @@ export default function Receivables() {
           </div>
           <div className="divide-y divide-skylight/20">
             {received.map(r => (
-              <div key={r._id} className="px-5 py-4 flex items-center justify-between gap-4">
+              <div 
+                key={r._id} 
+                onClick={() => setSelectedDetailsItem(r)}
+                className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-skylight/5 transition-colors"
+              >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-ocean/50 line-through truncate">{r.clientName}</p>
-                  {r.description && <p className="text-xs text-bluebird/60 mt-0.5">{r.description}</p>}
-                  <p className="text-xs text-green-500 mt-0.5">
+                  <div className="flex items-center justify-between sm:justify-start gap-2 mb-1 sm:mb-0">
+                    <p className="text-sm font-semibold text-ocean/50 line-through truncate sm:max-w-[200px] md:max-w-xs">{r.clientName}</p>
+                    <span className="sm:hidden text-sm font-bold text-ocean/50 line-through shrink-0">{formatCurrency(r.amount)}</span>
+                  </div>
+                  {r.description && <p className="text-xs text-bluebird/60 truncate mb-1 sm:mb-0">{r.description}</p>}
+                  <p className="text-xs text-green-500">
                     Received: {new Date(r.receivedAt).toLocaleDateString('en-IN')}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <p className="text-sm font-bold text-ocean/50">{formatCurrency(r.amount)}</p>
-                  <span className="px-3 py-1.5 bg-green-50 text-green-600 text-xs font-semibold rounded-lg border border-green-200">
-                    ✓ Received
-                  </span>
-                  <button
-                    onClick={() => handleDelete(r._id)}
-                    className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-400 text-xs font-semibold rounded-lg border border-red-200 transition-all duration-200"
-                  >
-                    Delete
-                  </button>
+                
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t border-skylight/10 sm:border-none shrink-0">
+                  <span className="hidden sm:inline text-sm font-bold text-ocean/50 line-through">{formatCurrency(r.amount)}</span>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <span className="flex-1 sm:flex-initial text-center px-3.5 py-2 bg-green-50 text-green-600 text-xs font-semibold rounded-lg border border-green-200">
+                      ✓ Received
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(r._id); }}
+                      className="flex-1 sm:flex-initial text-center px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-400 text-xs font-semibold rounded-lg border border-red-200 transition-all duration-200"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -480,6 +504,13 @@ export default function Receivables() {
             saving={saving}
           />
         </Modal>
+      )}
+      {/* ── Details Popup ── */}
+      {selectedDetailsItem && (
+        <DetailsPopup
+          item={selectedDetailsItem}
+          onClose={() => setSelectedDetailsItem(null)}
+        />
       )}
 
     </Layout>

@@ -66,22 +66,108 @@ const totalInflow = txnInflow + receivablesInflow;
                 const cardTransactions = await Transaction.find({
                     userId,
                     cardId: card._id,
-                    paymentMode: 'credit_card',
-                    transactionType: 'expense',
-                    date: { $gte: monthStart, $lte: monthEnd }
+                    paymentMode: 'credit_card'
                 });
-                const outstanding = cardTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+                const expenses = cardTransactions.filter(t => t.transactionType === 'expense');
+                const payments = cardTransactions.filter(t => t.transactionType === 'inflow');
+                const totalPayments = payments.reduce((sum, t) => sum + t.amount, 0);
+
+                // Helper to find the statement date for a transaction
+                const getStatementDateForTxn = (txnDate, billingDate) => {
+                    const d = new Date(txnDate);
+                    let year = d.getFullYear();
+                    let month = d.getMonth();
+                    if (d.getDate() > billingDate) {
+                        month += 1;
+                        if (month > 11) {
+                            month = 0;
+                            year += 1;
+                        }
+                    }
+                    return new Date(year, month, billingDate, 23, 59, 59, 999);
+                };
+
+                const today = new Date();
+
+                // Most recent statement date
+                let stmtYear = today.getFullYear();
+                let stmtMonth = today.getMonth();
+                if (today.getDate() < card.billingDate) {
+                    stmtMonth -= 1;
+                    if (stmtMonth < 0) {
+                        stmtMonth = 11;
+                        stmtYear -= 1;
+                    }
+                }
+                const latestStatementDate = new Date(stmtYear, stmtMonth, card.billingDate, 23, 59, 59, 999);
+
+                // Due date for the latest statement
+                let dueYear = latestStatementDate.getFullYear();
+                let dueMonth = latestStatementDate.getMonth() + 1;
+                if (dueMonth > 11) {
+                    dueMonth = 0;
+                    dueYear += 1;
+                }
+                const latestDueDate = new Date(dueYear, dueMonth, card.dueDate, 23, 59, 59, 999);
+
+                // Classify expenses
+                const billedExpenses = expenses.filter(t => {
+                    const stmtDate = getStatementDateForTxn(t.date, card.billingDate);
+                    return stmtDate <= latestStatementDate;
+                });
+
+                const unbilledExpenses = expenses.filter(t => {
+                    const stmtDate = getStatementDateForTxn(t.date, card.billingDate);
+                    return stmtDate > latestStatementDate;
+                });
+
+                const totalBilledExpenses = billedExpenses.reduce((sum, t) => sum + t.amount, 0);
+                const totalUnbilledExpenses = unbilledExpenses.reduce((sum, t) => sum + t.amount, 0);
+
+                // Payments reduce billed first, then unbilled
+                const billedAmount = Math.max(0, totalBilledExpenses - totalPayments);
+                const remainingPayments = Math.max(0, totalPayments - totalBilledExpenses);
+                const unbilledAmount = Math.max(0, totalUnbilledExpenses - remainingPayments);
+                
+                const outstanding = billedAmount + unbilledAmount;
                 const utilization = card.creditLimit > 0
                     ? ((outstanding / card.creditLimit) * 100).toFixed(2)
                     : '0.00';
+
+                const availableCredit = Math.max(0, card.creditLimit - outstanding);
+
+                const paymentsAppliedToBilled = Math.min(totalBilledExpenses, totalPayments);
+                const paymentsAppliedToUnbilled = Math.max(0, totalPayments - totalBilledExpenses);
+
                 return {
+                    _id:         card._id,
                     cardName:    card.cardName,
                     bankName:    card.bankName,
                     creditLimit: card.creditLimit,
                     outstanding,
+                    billedAmount,
+                    unbilledAmount,
                     utilization: `${utilization}%`,
-                    dueDate:     card.dueDate,
-                    billingDate: card.billingDate
+                    dueDate:     latestDueDate.toISOString(),
+                    statementDate: latestStatementDate.toISOString(),
+                    availableCredit,
+                    totalBilledExpenses,
+                    totalUnbilledExpenses,
+                    paymentsAppliedToBilled,
+                    paymentsAppliedToUnbilled,
+                    billedTransactions: billedExpenses.map(t => ({
+                        _id: t._id,
+                        name: t.name,
+                        amount: t.amount,
+                        date: t.date
+                    })),
+                    unbilledTransactions: unbilledExpenses.map(t => ({
+                        _id: t._id,
+                        name: t.name,
+                        amount: t.amount,
+                        date: t.date
+                    }))
                 };
             })
         );
