@@ -3,10 +3,22 @@ import autoTable from 'jspdf-autotable';
 
 const fmt = (amount) => `Rs. ${Number(amount).toLocaleString('en-IN')}`;
 
-export const exportTransactionsPDF = (transactions, month = null) => {
+export const exportTransactionsPDF = (transactions, filterCategory = 'all', month = null) => {
   const doc   = new jsPDF();
   const now   = new Date();
-  const label = month || now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+
+  // Detect month from transactions if they all belong to the same month and year
+  let detectedMonth = null;
+  if (transactions && transactions.length > 0) {
+    const dates = transactions.map(t => new Date(t.date));
+    const firstDate = dates[0];
+    const sameMonth = dates.every(d => d.getMonth() === firstDate.getMonth() && d.getFullYear() === firstDate.getFullYear());
+    if (sameMonth) {
+      detectedMonth = firstDate.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+    }
+  }
+  const monthLabel = month || detectedMonth || now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+  const categoryLabel = filterCategory === 'all' ? 'All Categories' : filterCategory;
 
   // ── Header ──
   doc.setFontSize(22);
@@ -15,47 +27,61 @@ export const exportTransactionsPDF = (transactions, month = null) => {
 
   doc.setFontSize(11);
   doc.setTextColor(67, 139, 196);
-  doc.text('Monthly Spending Report', 14, 27);
-
-  doc.setFontSize(10);
-  doc.setTextColor(120, 130, 150);
-  doc.text(label, 14, 34);
+  const subtitle = filterCategory !== 'all' ? `Category Report: ${filterCategory}` : 'Monthly Spending Report';
+  doc.text(subtitle, 14, 27);
 
   // ── Divider ──
   doc.setDrawColor(140, 193, 233);
   doc.setLineWidth(0.3);
-  doc.line(14, 38, 196, 38);
+  doc.line(14, 33, 196, 33);
 
-  // ── Summary boxes ──
-  const expenses  = transactions.filter(t => t.transactionType === 'expense');
-  const inflows   = transactions.filter(t => t.transactionType === 'inflow');
-  const totalExp  = expenses.reduce((s, t) => s + t.amount, 0);
-  const totalInf  = inflows.reduce((s,  t) => s + t.amount, 0);
-  const net       = totalInf - totalExp;
+  // ── Summary Details (replacing the three cards) ──
+  const total = transactions.reduce((sum, t) => {
+    if (t.transactionType === 'inflow') return sum + t.amount;
+    return sum - t.amount;
+  }, 0);
 
-  const boxes = [
-    { label: 'Total Inflow',    value: fmt(totalInf), color: [18, 40, 75] },
-    { label: 'Total Expenses',  value: fmt(totalExp), color: [220, 80,  80] },
-    { label: 'Net Savings',     value: fmt(net),      color: net >= 0 ? [0, 120, 80] : [220, 80, 80] },
-  ];
+  // Draw elegant background rectangle for metadata
+  doc.setFillColor(240, 246, 255);
+  doc.roundedRect(14, 38, 182, 22, 3, 3, 'F');
 
-  boxes.forEach((box, i) => {
-    const x = 14 + i * 62;
-    doc.setFillColor(240, 246, 255);
-    doc.roundedRect(x, 43, 58, 22, 3, 3, 'F');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 120, 150);
-    doc.text(box.label, x + 5, 51);
-    doc.setFontSize(11);
-    doc.setTextColor(...box.color);
-    doc.setFont('helvetica', 'bold');
-    doc.text(box.value, x + 5, 60);
-    doc.setFont('helvetica', 'normal');
-  });
+  // Metadata labels
+  doc.setFontSize(8);
+  doc.setTextColor(100, 120, 150);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Month', 19, 46);
+  doc.text('Date Generated', 64.5, 46);
+  doc.text('Category Selected', 110, 46);
+  doc.text('Total Net Amount', 155.5, 46);
+
+  // Metadata values
+  doc.setFontSize(10);
+  doc.setTextColor(18, 40, 75);
+  doc.setFont('helvetica', 'bold');
+  
+  // 1. Month value
+  doc.text(monthLabel, 19, 54);
+
+  // 2. Date value
+  const dateStr = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  doc.text(dateStr, 64.5, 54);
+
+  // 3. Category value (truncate if too long)
+  const displayCategory = categoryLabel.length > 18 ? categoryLabel.substring(0, 15) + '...' : categoryLabel;
+  doc.text(displayCategory, 110, 54);
+
+  // 4. Total Amount value
+  const totalVal = (total >= 0 ? '+' : '-') + ' ' + fmt(Math.abs(total));
+  const totalColor = total >= 0 ? [0, 120, 80] : [220, 80, 80];
+  doc.setTextColor(...totalColor);
+  doc.text(totalVal, 155.5, 54);
+
+  // Reset text settings
+  doc.setFont('helvetica', 'normal');
 
   // ── Table ──
   autoTable(doc, {
-    startY: 72,
+    startY: 68,
     head: [['Date', 'Name', 'Type', 'Mode', 'Category', 'Expense Type', 'Amount']],
     body: transactions.map(t => [
       new Date(t.date).toLocaleDateString('en-IN', {
@@ -118,5 +144,5 @@ export const exportTransactionsPDF = (transactions, month = null) => {
     );
   }
 
-  doc.save(`Artha-Report-${label.replace(' ', '-')}.pdf`);
+  doc.save(`Artha-Report-${categoryLabel.replace(/\s+/g, '-')}-${monthLabel.replace(/\s+/g, '-')}.pdf`);
 };
