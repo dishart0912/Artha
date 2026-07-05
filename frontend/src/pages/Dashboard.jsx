@@ -8,6 +8,7 @@ import { getCards } from '../services/cardService';
 import SpendingChart from '../components/SpendingChart';
 import { getTransactions, payCardBill } from '../services/transactionService';
 import DetailsPopup from '../components/DetailsPopup';
+import PayBillModal from '../components/PayBillModal';
 
 // ─── Inflow Popup ─────────────────────────────────────────────────────────────
 function InflowPopup({ data, onClose, monthLabel, onItemClick }) {
@@ -290,6 +291,7 @@ export default function Dashboard() {
   const [selectedCard, setSelectedCard] = useState(null);
   const [popupType, setPopupType]       = useState(null); // 'billed' | 'unbilled'
   const [payingCardId, setPayingCardId] = useState(null);
+  const [payModalCard, setPayModalCard] = useState(null);
 
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
@@ -320,11 +322,11 @@ export default function Dashboard() {
     fetchAll(true);
   }, [location.key, selectedMonth]);
 
-  const handlePayBill = async (cardId) => {
-    if (!window.confirm('Mark this credit card bill as paid? Billed amount will go to 0, and those transactions will be cleared from outstanding balance.')) return;
-    setPayingCardId(cardId);
+  const handlePayBill = async (card, paymentMode, accountId) => {
+    setPayingCardId(card._id);
     try {
-      await payCardBill(cardId);
+      await payCardBill(card._id, paymentMode, accountId);
+      setPayModalCard(null);
       await fetchAll(false);
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to process payment');
@@ -518,10 +520,21 @@ export default function Dashboard() {
                             {card.statementDate ? new Date(card.statementDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
                           </span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex justify-between items-center mt-1">
                           <span>Due Date:</span>
-                          <span className="font-semibold text-ocean">
+                          <span className="font-semibold text-ocean flex items-center gap-1.5">
                             {card.dueDate ? new Date(card.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
+                            {card.billedAmount > 0 && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPayModalCard(card);
+                                }}
+                                className="px-1.5 py-0.5 text-[9px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 rounded shadow transition"
+                              >
+                                Pay
+                              </button>
+                            )}
                           </span>
                         </div>
                         <div className="flex justify-between col-span-2">
@@ -558,7 +571,7 @@ export default function Dashboard() {
 
       {/* ── Spending chart ── */}
       <div className="animate-fadeIn" style={{ animationDelay: '300ms' }}>
-        <SpendingChart transactions={transactions} />
+        <SpendingChart transactions={transactions} selectedMonth={selectedMonth} />
       </div>
 
       {/* ── Inflow Popup ── */}
@@ -576,6 +589,16 @@ export default function Dashboard() {
           card={selectedCard}
           type={popupType}
           onClose={() => { setSelectedCard(null); setPopupType(null); }}
+        />
+      )}
+
+      {/* ── Pay Card Bill Modal ── */}
+      {payModalCard && (
+        <PayBillModal
+          card={payModalCard}
+          onClose={() => setPayModalCard(null)}
+          onConfirm={(paymentMode, accountId) => handlePayBill(payModalCard, paymentMode, accountId)}
+          loading={payingCardId === payModalCard._id}
         />
       )}
 

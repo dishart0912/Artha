@@ -123,10 +123,11 @@ function TxnRow({ txn, index, onEdit, onDelete, onRowClick }) {
 }
 
 // ─── Calendar View ────────────────────────────────────────────────────────────
-function CalendarView({ transactions, onDaySelect, selectedDate }) {
+function CalendarView({ transactions, onDaySelect, selectedDate, selectedMonth, setSelectedMonth }) {
     const today = new Date();
-    const [viewMonth, setViewMonth] = useState(today.getMonth());
-    const [viewYear, setViewYear]   = useState(today.getFullYear());
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const viewYear = y;
+    const viewMonth = m - 1;
 
     const firstDay  = new Date(viewYear, viewMonth, 1).getDay();
     const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
@@ -155,12 +156,22 @@ function CalendarView({ transactions, onDaySelect, selectedDate }) {
     const days = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
     const prevMonth = () => {
-        if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-        else setViewMonth(m => m - 1);
+        let newMonth = viewMonth - 1;
+        let newYear = viewYear;
+        if (newMonth < 0) {
+            newMonth = 11;
+            newYear -= 1;
+        }
+        setSelectedMonth(`${newYear}-${String(newMonth + 1).padStart(2, '0')}`);
     };
     const nextMonth = () => {
-        if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-        else setViewMonth(m => m + 1);
+        let newMonth = viewMonth + 1;
+        let newYear = viewYear;
+        if (newMonth > 11) {
+            newMonth = 0;
+            newYear += 1;
+        }
+        setSelectedMonth(`${newYear}-${String(newMonth + 1).padStart(2, '0')}`);
     };
 
     return (
@@ -246,97 +257,19 @@ function CalendarView({ transactions, onDaySelect, selectedDate }) {
     );
 }
 
-// ─── Card Statement View ──────────────────────────────────────────────────────
-function CardStatement({ transactions, cards }) {
-    const [selectedCardId, setSelectedCardId] = useState('');
 
-    const cardTxns = useMemo(() => {
-        if (!selectedCardId) return [];
-        return transactions.filter(t => t.cardId?._id === selectedCardId || t.cardId === selectedCardId);
-    }, [transactions, selectedCardId]);
 
-    const billed   = cardTxns.filter(t => t.billingStatus === 'billed');
-    const unbilled = cardTxns.filter(t => t.billingStatus === 'unbilled');
-    const billedTotal   = billed.reduce((s, t) => s + t.amount, 0);
-    const unbilledTotal = unbilled.reduce((s, t) => s + t.amount, 0);
-
-    return (
-        <div className="bg-white rounded-2xl border border-skylight/30 shadow-sm p-5 mb-6 animate-fadeIn">
-            <div className="flex items-center justify-between mb-4">
-                <div>
-                    <h3 className="text-sm font-semibold text-ocean">Card Statement View</h3>
-                    <p className="text-xs text-bluebird/60 mt-0.5">View billed and unbilled by card</p>
-                </div>
-                <select
-                    value={selectedCardId}
-                    onChange={e => setSelectedCardId(e.target.value)}
-                    className="text-xs font-semibold text-blueberry border border-skylight/40 rounded-lg px-3 py-1.5 bg-clouds focus:outline-none focus:ring-2 focus:ring-blueberry"
-                >
-                    <option value="">— Select Card —</option>
-                    {cards.map(card => (
-                        <option key={card._id} value={card._id}>
-                            {card.cardName} ({card.bankName})
-                        </option>
-                    ))}
-                </select>
-            </div>
-
-            {!selectedCardId ? (
-                <p className="text-xs text-bluebird/50 text-center py-4">Select a card to view its transactions</p>
-            ) : cardTxns.length === 0 ? (
-                <p className="text-xs text-bluebird/50 text-center py-4">No transactions found for this card</p>
-            ) : (
-                <>
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                        <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3">
-                            <p className="text-[10px] font-semibold text-yellow-600 uppercase tracking-wider mb-1">Unbilled</p>
-                            <p className="text-lg font-bold text-yellow-700">{formatCurrency(unbilledTotal)}</p>
-                            <p className="text-[10px] text-yellow-600/70 mt-0.5">{unbilled.length} transaction{unbilled.length !== 1 ? 's' : ''}</p>
-                        </div>
-                        <div className="bg-skylight/20 border border-skylight/30 rounded-xl p-3">
-                            <p className="text-[10px] font-semibold text-bluebird uppercase tracking-wider mb-1">Billed</p>
-                            <p className="text-lg font-bold text-ocean">{formatCurrency(billedTotal)}</p>
-                            <p className="text-[10px] text-bluebird/60 mt-0.5">{billed.length} transaction{billed.length !== 1 ? 's' : ''}</p>
-                        </div>
-                    </div>
-
-                    {unbilled.length > 0 && (
-                        <div className="mb-3">
-                            <p className="text-[11px] font-semibold text-yellow-600 uppercase tracking-wider mb-2">Unbilled Transactions</p>
-                            <div className="divide-y divide-skylight/20 border border-skylight/20 rounded-xl overflow-hidden">
-                                {unbilled.map(t => (
-                                    <div key={t._id} className="flex items-center justify-between px-4 py-2.5">
-                                        <div>
-                                            <p className="text-sm font-medium text-ocean">{t.name}</p>
-                                            <p className="text-[11px] text-bluebird/60">{formatDate(t.date)}</p>
-                                        </div>
-                                        <span className="text-sm font-bold text-red-400">-{formatCurrency(t.amount)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {billed.length > 0 && (
-                        <div>
-                            <p className="text-[11px] font-semibold text-bluebird uppercase tracking-wider mb-2">Billed Transactions</p>
-                            <div className="divide-y divide-skylight/20 border border-skylight/20 rounded-xl overflow-hidden">
-                                {billed.map(t => (
-                                    <div key={t._id} className="flex items-center justify-between px-4 py-2.5">
-                                        <div>
-                                            <p className="text-sm font-medium text-ocean">{t.name}</p>
-                                            <p className="text-[11px] text-bluebird/60">{formatDate(t.date)}</p>
-                                        </div>
-                                        <span className="text-sm font-bold text-ocean/70">-{formatCurrency(t.amount)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </>
-            )}
-        </div>
-    );
+// ─── Month options ─────────────────────────────────────────────────────────────
+function getMonthOptions() {
+  const options = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    options.push({ value, label });
+  }
+  return options;
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -358,6 +291,8 @@ export default function Transactions() {
     const [filterCategory, setFilterCategory] = useState('all');
     const [search, setSearch]                 = useState('');
     const [selectedDate, setSelectedDate]     = useState(null);
+    const monthOptions = useMemo(() => getMonthOptions(), []);
+    const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
     const [activeTab, setActiveTab]           = useState('list'); // 'list' | 'calendar' | 'cards'
     const [searchParams] = useSearchParams();
     const fetchAll = async () => {
@@ -400,9 +335,16 @@ export default function Transactions() {
                 const txnDate = new Date(txn.date).toISOString().split('T')[0];
                 if (txnDate !== selectedDate) return false;
             }
+            if (selectedMonth) {
+                const [y, m] = selectedMonth.split('-').map(Number);
+                const d = new Date(txn.date);
+                if (d.getFullYear() !== y || (d.getMonth() + 1) !== m) {
+                    return false;
+                }
+            }
             return true;
         });
-    }, [transactions, filterType, filterMode, filterExpense, filterBilling, filterCategory, search, selectedDate]);
+    }, [transactions, filterType, filterMode, filterExpense, filterBilling, filterCategory, search, selectedDate, selectedMonth]);
 
     const filteredTotals = useMemo(() => {
         let inflow = 0;
@@ -471,6 +413,18 @@ export default function Transactions() {
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
+                        <select
+                            value={selectedMonth}
+                            onChange={e => {
+                                setSelectedMonth(e.target.value);
+                                setSelectedDate(null);
+                            }}
+                            className="px-3.5 py-2 rounded-xl border border-skylight/40 bg-white text-sm font-medium text-ocean shadow-sm focus:outline-none focus:ring-2 focus:ring-blueberry/30 transition cursor-pointer"
+                        >
+                            {monthOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
                         <button
                             onClick={() => exportTransactionsPDF(filtered, filterCategory)}
                             className="flex items-center gap-1.5 px-4 py-2 bg-white border border-skylight/40 text-ocean text-sm font-medium rounded-xl hover:bg-skylight/10 hover:-translate-y-0.5 transition-all duration-200"
@@ -494,7 +448,6 @@ export default function Transactions() {
                 {[
                     { key: 'list',     label: 'List View' },
                     { key: 'calendar', label: 'Calendar' },
-                    { key: 'cards',    label: 'Card Statement' },
                 ].map(tab => (
                     <button
                         key={tab.key}
@@ -516,13 +469,12 @@ export default function Transactions() {
                     transactions={transactions}
                     onDaySelect={setSelectedDate}
                     selectedDate={selectedDate}
+                    selectedMonth={selectedMonth}
+                    setSelectedMonth={setSelectedMonth}
                 />
             )}
 
-            {/* ── Card statement view ── */}
-            {activeTab === 'cards' && (
-                <CardStatement transactions={transactions} cards={cards} />
-            )}
+
 
             {/* ── Search (list + calendar) ── */}
             {activeTab !== 'cards' && (

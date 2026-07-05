@@ -1,6 +1,7 @@
 const Transaction = require('../models/Transaction');
 const BankAccount = require('../models/BankAccount');
 const Card = require('../models/Card');
+const Receivable = require('../models/Receivable');
 
 // ─── Payment modes that require a bank account ────────────────────────────────
 const BANK_LINKED_MODES = ['upi', 'debit_card', 'bank_transfer'];
@@ -23,13 +24,48 @@ const applyBalanceDelta = async (accountId, delta) => {
 const getDelta = (transactionType, amount) =>
     transactionType === 'inflow' ? +amount : -amount;
 
+const getBankDelta = (transactionType, amount, cardId) => {
+    if (cardId && transactionType === 'inflow') {
+        return -amount;
+    }
+    return transactionType === 'inflow' ? +amount : -amount;
+};
+
 // ─── Helper: compute billing status for credit card transactions ──────────────
 const computeBillingStatus = async (cardId, date) => {
     if (!cardId) return null;
     const card = await Card.findById(cardId);
-    if (!card) return null;
-    const transactionDay = new Date(date).getDate();
-    return transactionDay <= card.billingDate ? 'unbilled' : 'billed';
+    if (!card || !card.billingDate) return null;
+
+    const today = new Date();
+    const billingDate = card.billingDate;
+
+    // Calculate statement date for this transaction
+    const txnDate = new Date(date);
+    let year = txnDate.getFullYear();
+    let month = txnDate.getMonth();
+    if (txnDate.getDate() > billingDate) {
+        month += 1;
+        if (month > 11) {
+            month = 0;
+            year += 1;
+        }
+    }
+    const stmtDate = new Date(year, month, billingDate, 23, 59, 59, 999);
+
+    // Calculate latest statement date
+    let stmtYear = today.getFullYear();
+    let stmtMonth = today.getMonth();
+    if (today.getDate() < billingDate) {
+        stmtMonth -= 1;
+        if (stmtMonth < 0) {
+            stmtMonth = 11;
+            stmtYear -= 1;
+        }
+    }
+    const latestStatementDate = new Date(stmtYear, stmtMonth, billingDate, 23, 59, 59, 999);
+
+    return stmtDate <= latestStatementDate ? 'billed' : 'unbilled';
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,7 +76,7 @@ const addTransaction = async (req, res) => {
         const {
             name, amount, date, paymentMode,
             transactionType, cardId, accountId,
-            expenseType, category
+            expenseType, category, receivableId
         } = req.body;
 
         // ── Validation ───────────────────────────────────────────────────────
@@ -50,6 +86,19 @@ const addTransaction = async (req, res) => {
                 message: `A bank account is required for ${paymentMode} transactions.`
             });
         }
+
+        let linkedReceivable = null;
+        if (transactionType === 'inflow' && receivableId) {
+            linkedReceivable = await Receivable.findById(receivableId);
+            if (!linkedReceivable || linkedReceivable.userId.toString() !== req.user._id.toString()) {
+                return res.status(400).json({ message: 'Invalid receivable selected.' });
+            }
+            if (linkedReceivable.status === 'received') {
+                return res.status(400).json({ message: 'Selected receivable is already paid.' });
+            }
+        }
+
+        const finalCategory = linkedReceivable ? 'Receivable' : (category || null);
 
         // ── Credit card billing status ────────────────────────────────────────
         const billingStatus =
@@ -69,13 +118,21 @@ const addTransaction = async (req, res) => {
             cardId: cardId || null,
             billingStatus,
             expenseType: expenseType || null,
-            category: category || null
+            category: finalCategory
         });
+
+        // ── Update receivable if linked ──────────────────────────────────────
+        if (linkedReceivable) {
+            linkedReceivable.status = 'received';
+            linkedReceivable.receivedAt = date || new Date();
+            linkedReceivable.transactionId = transaction._id;
+            await linkedReceivable.save();
+        }
 
         // ── Update bank account balance ───────────────────────────────────────
         // Cash and credit_card never touch bank balances.
         if (needsAccount && accountId) {
-            await applyBalanceDelta(accountId, getDelta(transactionType, amount));
+            await applyBalanceDelta(accountId, getBankDelta(transactionType, amount, cardId));
         }
 
         res.status(201).json(transaction);
@@ -91,11 +148,52 @@ const addTransaction = async (req, res) => {
 const getTransactions = async (req, res) => {
     try {
         const transactions = await Transaction.find({ userId: req.user._id })
-            .populate('cardId', 'cardName bankName')
+            .populate('cardId', 'cardName bankName billingDate')
             .populate('accountId', 'bankName accountName accountType lastFourDigits')
             .sort({ date: -1 });
 
-        res.status(200).json(transactions);
+        const today = new Date();
+
+        const updatedTransactions = transactions.map(t => {
+            if (t.paymentMode === 'credit_card' && t.cardId && t.cardId.billingDate && t.transactionType === 'expense') {
+                const card = t.cardId;
+                const billingDate = card.billingDate;
+
+                // Calculate statement date for this transaction
+                const txnDate = new Date(t.date);
+                let year = txnDate.getFullYear();
+                let month = txnDate.getMonth();
+                if (txnDate.getDate() > billingDate) {
+                    month += 1;
+                    if (month > 11) {
+                        month = 0;
+                        year += 1;
+                    }
+                }
+                const stmtDate = new Date(year, month, billingDate, 23, 59, 59, 999);
+
+                // Calculate latest statement date
+                let stmtYear = today.getFullYear();
+                let stmtMonth = today.getMonth();
+                if (today.getDate() < billingDate) {
+                    stmtMonth -= 1;
+                    if (stmtMonth < 0) {
+                        stmtMonth = 11;
+                        stmtYear -= 1;
+                    }
+                }
+                const latestStatementDate = new Date(stmtYear, stmtMonth, billingDate, 23, 59, 59, 999);
+
+                const billingStatus = stmtDate <= latestStatementDate ? 'billed' : 'unbilled';
+
+                const tObj = t.toObject();
+                tObj.billingStatus = billingStatus;
+                return tObj;
+            }
+            return t;
+        });
+
+        res.status(200).json(updatedTransactions);
 
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -136,7 +234,7 @@ const updateTransaction = async (req, res) => {
             // Reverse = opposite delta
             await applyBalanceDelta(
                 transaction.accountId,
-                -getDelta(transaction.transactionType, transaction.amount)
+                -getBankDelta(transaction.transactionType, transaction.amount, transaction.cardId)
             );
         }
 
@@ -168,7 +266,7 @@ const updateTransaction = async (req, res) => {
 
         // ── Step 3: Apply the NEW transaction's balance impact ────────────────
         if (needsAccount && accountId) {
-            await applyBalanceDelta(accountId, getDelta(transactionType, amount));
+            await applyBalanceDelta(accountId, getBankDelta(transactionType, amount, cardId));
         }
 
         res.status(200).json(updatedTransaction);
@@ -197,9 +295,15 @@ const deleteTransaction = async (req, res) => {
         if (needsAccount && transaction.accountId) {
             await applyBalanceDelta(
                 transaction.accountId,
-                -getDelta(transaction.transactionType, transaction.amount)
+                -getBankDelta(transaction.transactionType, transaction.amount, transaction.cardId)
             );
         }
+
+        // Find if this transaction is linked to any receivable, and reset it
+        await Receivable.findOneAndUpdate(
+            { transactionId: transaction._id },
+            { status: 'pending', receivedAt: null, transactionId: null }
+        );
 
         await Transaction.findByIdAndDelete(req.params.id);
         res.status(200).json({ message: 'Transaction removed' });
@@ -214,9 +318,15 @@ const deleteTransaction = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const payCardBill = async (req, res) => {
     try {
-        const { cardId } = req.body;
+        const { cardId, paymentMode, accountId } = req.body;
         if (!cardId) {
             return res.status(400).json({ message: 'Card ID is required' });
+        }
+        if (!paymentMode) {
+            return res.status(400).json({ message: 'Payment mode is required' });
+        }
+        if (!['cash', 'upi', 'debit_card', 'bank_transfer'].includes(paymentMode)) {
+            return res.status(400).json({ message: 'Invalid payment mode' });
         }
 
         const card = await Card.findById(cardId);
@@ -224,11 +334,24 @@ const payCardBill = async (req, res) => {
             return res.status(404).json({ message: 'Card not found' });
         }
 
+        const needsAccount = BANK_LINKED_MODES.includes(paymentMode);
+        if (needsAccount && !accountId) {
+            return res.status(400).json({
+                message: `A bank account is required for ${paymentMode} transactions.`
+            });
+        }
+
+        if (needsAccount) {
+            const account = await BankAccount.findById(accountId);
+            if (!account || account.userId.toString() !== req.user._id.toString()) {
+                return res.status(400).json({ message: 'Invalid bank account selected.' });
+            }
+        }
+
         // Fetch all transactions (expenses and inflows) for this card
         const cardTransactions = await Transaction.find({
             userId: req.user._id,
-            cardId,
-            paymentMode: 'credit_card'
+            cardId
         });
 
         const expenses = cardTransactions.filter(t => t.transactionType === 'expense');
@@ -279,11 +402,16 @@ const payCardBill = async (req, res) => {
             name: `Card Payment - ${card.cardName}`,
             amount: billedAmount,
             date: new Date(),
-            paymentMode: 'credit_card',
+            paymentMode,
             transactionType: 'inflow',
             cardId: card._id,
+            accountId: needsAccount ? accountId : null,
             billingStatus: null
         });
+
+        if (needsAccount && accountId) {
+            await applyBalanceDelta(accountId, -billedAmount);
+        }
 
         res.status(200).json({
             message: 'Credit card bill paid successfully',

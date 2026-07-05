@@ -87,7 +87,7 @@ export default function Register() {
             <h1 className="text-2xl font-bold text-ocean">Artha</h1>
           </div>
           <div className="w-16 h-16 rounded-2xl bg-blueberry flex items-center justify-center mb-6 shadow-md">
-                  <img src={arthaLogo} alt="Artha" className="h-15 w-auto brightness-0 invert" />
+                  <img src={arthaLogo} alt="Artha" className="h-10 w-auto brightness-0 invert" />
                   </div>
           <h2 className="text-2xl font-semibold text-ocean mb-1">Create account</h2>
           <p className="text-bluebird text-sm mb-8">Start tracking your finances</p>

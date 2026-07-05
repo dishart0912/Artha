@@ -24,13 +24,18 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
-export default function SpendingChart({ transactions }) {
+export default function SpendingChart({ transactions, selectedMonth }) {
   const chartData = useMemo(() => {
-    const now = new Date();
-    // Build last 6 months
+    let baseDate = new Date();
+    if (selectedMonth && /^\d{4}-\d{2}$/.test(selectedMonth)) {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      baseDate = new Date(year, month - 1, 1);
+    }
+
+    // Build last 6 months leading up to baseDate
     const months = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() - i, 1);
       months.push({
         key: `${d.getFullYear()}-${d.getMonth()}`,
         label: `${MONTHS[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,
@@ -45,12 +50,17 @@ export default function SpendingChart({ transactions }) {
       const key = `${d.getFullYear()}-${d.getMonth()}`;
       const bucket = months.find(m => m.key === key);
       if (!bucket) return;
-      if (txn.transactionType === 'inflow')  bucket.inflow  += txn.amount;
-      if (txn.transactionType === 'expense') bucket.expense += txn.amount;
+      // Exclude credit card payments from inflow to match dashboard metrics
+      if (txn.transactionType === 'inflow' && txn.paymentMode !== 'credit_card') {
+        bucket.inflow += txn.amount;
+      }
+      if (txn.transactionType === 'expense') {
+        bucket.expense += txn.amount;
+      }
     });
 
     return months.map(({ label, inflow, expense }) => ({ label, inflow, expense }));
-  }, [transactions]);
+  }, [transactions, selectedMonth]);
 
   const hasData = chartData.some(d => d.inflow > 0 || d.expense > 0);
 

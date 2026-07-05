@@ -28,13 +28,13 @@ const getDashboard = async (req, res) => {
         });
 
         const inflowTransactions = transactions.filter(
-            t => t.transactionType === 'inflow' && t.paymentMode !== 'credit_card'
+            t => t.transactionType === 'inflow' && !t.cardId && t.category !== 'Receivable'
         );
 
         const txnInflow = inflowTransactions.reduce((sum, t) => sum + t.amount, 0);
 
         const directExpenses = transactions
-            .filter(t => t.transactionType === 'expense' && t.paymentMode !== 'credit_card')
+            .filter(t => t.transactionType === 'expense' && !t.cardId)
             .reduce((sum, t) => sum + t.amount, 0);
 
         const fixedExpenses = transactions
@@ -65,8 +65,7 @@ const totalInflow = txnInflow + receivablesInflow;
             cards.map(async (card) => {
                 const cardTransactions = await Transaction.find({
                     userId,
-                    cardId: card._id,
-                    paymentMode: 'credit_card'
+                    cardId: card._id
                 });
 
                 const expenses = cardTransactions.filter(t => t.transactionType === 'expense');

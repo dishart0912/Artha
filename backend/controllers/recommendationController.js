@@ -22,14 +22,14 @@ const getRecommendation = async (req, res) => {
             // Calculate current outstanding
             const cardTransactions = await Transaction.find({
                 userId,
-                cardId: card._id,
-                paymentMode: 'credit_card'
+                cardId: card._id
             });
 
-            const outstanding = cardTransactions
-                .reduce((sum, t) => sum + t.amount, 0);
+            const outstanding = cardTransactions.reduce((sum, t) => {
+                return sum + (t.transactionType === 'expense' ? t.amount : -t.amount);
+            }, 0);
 
-            const utilization = (outstanding / card.creditLimit) * 100;
+            const utilization = card.creditLimit > 0 ? (outstanding / card.creditLimit) * 100 : 0;
 
             // Skip cards with >80% utilization
             if (utilization > 80) {

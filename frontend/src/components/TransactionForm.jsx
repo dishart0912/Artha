@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getCategories, addCategory, deleteCategory, updateCategory } from '../services/categoryService';
+import { getReceivables } from '../services/receivableService';
+import { formatCurrency } from '../utils/format';
 
 // Payment modes that require a bank account to be linked
 const BANK_LINKED_MODES = ['upi', 'debit_card', 'bank_transfer'];
@@ -41,6 +43,44 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
     }, [initial]);
 
     const [categories, setCategories] = useState([]);
+    const [pendingReceivables, setPendingReceivables] = useState([]);
+    const [loadingReceivables, setLoadingReceivables] = useState(false);
+    const [isReceivablePayment, setIsReceivablePayment] = useState(false);
+    const [selectedReceivableId, setSelectedReceivableId] = useState('');
+
+    useEffect(() => {
+        if (form.transactionType === 'inflow' && !initial) {
+            setLoadingReceivables(true);
+            getReceivables()
+                .then(data => {
+                    const pending = data.filter(r => r.status === 'pending');
+                    setPendingReceivables(pending);
+                    setLoadingReceivables(false);
+                })
+                .catch(err => {
+                    console.error("Failed to load receivables", err);
+                    setLoadingReceivables(false);
+                });
+        } else {
+            setIsReceivablePayment(false);
+            setSelectedReceivableId('');
+        }
+    }, [form.transactionType, initial]);
+
+    const handleReceivableSelect = (receivableId) => {
+        setSelectedReceivableId(receivableId);
+        if (receivableId) {
+            const recv = pendingReceivables.find(r => r._id === receivableId);
+            if (recv) {
+                setForm(prev => ({
+                    ...prev,
+                    name: `Payment from ${recv.clientName}`,
+                    amount: recv.amount,
+                    category: 'Receivable'
+                }));
+            }
+        }
+    };
     const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isEditingCategory, setIsEditingCategory] = useState(false);
@@ -158,7 +198,8 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
             accountId:       showAccountDropdown ? (form.accountId || null) : null,
             cardId:          showCardDropdown    ? (form.cardId    || null) : null,
             expenseType:     showExpenseFields   ? form.expenseType         : null,
-            category:        showExpenseFields   ? (form.category?.trim() || null) : null
+            category:        form.transactionType === 'inflow' && isReceivablePayment ? 'Receivable' : (showExpenseFields ? (form.category?.trim() || null) : null),
+            receivableId:    form.transactionType === 'inflow' && isReceivablePayment ? (selectedReceivableId || null) : null
         };
         onSubmit(payload);
     };
@@ -235,6 +276,51 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                     ))}
                 </div>
             </div>
+
+            {/* ── Receivable Payment check ── */}
+            {form.transactionType === 'inflow' && !initial && (
+                <div className="bg-skylight/10 border border-skylight/40 rounded-xl p-3.5 space-y-3 animate-fadeIn">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-ocean cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={isReceivablePayment}
+                            onChange={(e) => {
+                                setIsReceivablePayment(e.target.checked);
+                                if (!e.target.checked) {
+                                    setSelectedReceivableId('');
+                                }
+                            }}
+                            className="rounded border-skylight/50 text-blueberry focus:ring-blueberry/30"
+                        />
+                        Is this payment for a receivable?
+                    </label>
+
+                    {isReceivablePayment && (
+                        <div className="animate-fadeIn">
+                            <label className={labelCls}>Select Receivable</label>
+                            {loadingReceivables ? (
+                                <p className="text-xs text-bluebird/60">Loading receivables...</p>
+                            ) : pendingReceivables.length === 0 ? (
+                                <p className="text-xs text-yellow-600 font-medium">No pending receivables found.</p>
+                            ) : (
+                                <select
+                                    value={selectedReceivableId}
+                                    onChange={(e) => handleReceivableSelect(e.target.value)}
+                                    className={inputCls}
+                                    required
+                                >
+                                    <option value="">— Select Pending Receivable —</option>
+                                    {pendingReceivables.map(r => (
+                                        <option key={r._id} value={r._id}>
+                                            {r.clientName} (Amount: {formatCurrency(r.amount)})
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* ── Payment Mode ── */}
             <div>
