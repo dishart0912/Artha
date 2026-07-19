@@ -189,7 +189,9 @@ const totalInflow = txnInflow + receivablesInflow;
                     date:   t.date,
                     source: 'transaction',
                     mode:   t.paymentMode,
-                    category: t.category,
+                    category: t.subCategory || t.category,
+                    mainCategory: t.mainCategory,
+                    subCategory: t.subCategory,
                 })),
                 ...receivedReceivables.map(r => ({
                     _id:    r._id,

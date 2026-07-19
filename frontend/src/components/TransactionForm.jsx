@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getCategories, addCategory, deleteCategory, updateCategory } from '../services/categoryService';
+import { getCategories } from '../services/categoryService';
 import { getReceivables } from '../services/receivableService';
 import { formatCurrency } from '../utils/format';
 
@@ -15,13 +15,29 @@ const defaultForm = {
     accountId: '',
     cardId: '',
     expenseType: 'variable',
-    category: ''
+    mainCategory: '',
+    subCategory: ''
 };
 
-export default function TransactionForm({ initial, cards = [], accounts = [], allTransactions = [], onSubmit, onCancel, loading, onCategoryDeleted, onCategoryUpdated }) {
+export default function TransactionForm({ 
+    initial, 
+    cards = [], 
+    accounts = [], 
+    onSubmit, 
+    onCancel, 
+    loading,
+    prefillMainCategory = '',
+    prefillSubCategory = '',
+    prefillType = ''
+}) {
     const [form, setForm] = useState(defaultForm);
+    const [categories, setCategories] = useState([]);
+    const [pendingReceivables, setPendingReceivables] = useState([]);
+    const [loadingReceivables, setLoadingReceivables] = useState(false);
+    const [isReceivablePayment, setIsReceivablePayment] = useState(false);
+    const [selectedReceivableId, setSelectedReceivableId] = useState('');
 
-    // ── Seed form when editing ────────────────────────────────────────────────
+    // ── Seed form when editing or using prefill ────────────────────────────────
     useEffect(() => {
         if (initial) {
             setForm({
@@ -35,18 +51,31 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                 accountId:       initial.accountId?._id  || initial.accountId || '',
                 cardId:          initial.cardId?._id     || initial.cardId    || '',
                 expenseType:     initial.expenseType     || 'variable',
-                category:        initial.category        || ''
+                mainCategory:    initial.mainCategory    || 'Others',
+                subCategory:     initial.subCategory     || 'Others'
             });
         } else {
-            setForm(defaultForm);
+            setForm({
+                ...defaultForm,
+                mainCategory: prefillMainCategory || '',
+                subCategory: prefillSubCategory || '',
+                transactionType: prefillType || 'expense'
+            });
         }
-    }, [initial]);
+    }, [initial, prefillMainCategory, prefillSubCategory, prefillType]);
 
-    const [categories, setCategories] = useState([]);
-    const [pendingReceivables, setPendingReceivables] = useState([]);
-    const [loadingReceivables, setLoadingReceivables] = useState(false);
-    const [isReceivablePayment, setIsReceivablePayment] = useState(false);
-    const [selectedReceivableId, setSelectedReceivableId] = useState('');
+    // Fetch user categories from database
+    useEffect(() => {
+        const loadCategories = async () => {
+            try {
+                const res = await getCategories();
+                setCategories(res);
+            } catch (err) {
+                console.error("Failed to load categories", err);
+            }
+        };
+        loadCategories();
+    }, []);
 
     useEffect(() => {
         if (form.transactionType === 'inflow' && !initial) {
@@ -76,97 +105,10 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                     ...prev,
                     name: `Payment from ${recv.clientName}`,
                     amount: recv.amount,
-                    category: 'Receivable'
+                    mainCategory: 'Others',
+                    subCategory: 'Receivable'
                 }));
             }
-        }
-    };
-    const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
-    const [newCategoryName, setNewCategoryName] = useState('');
-    const [isEditingCategory, setIsEditingCategory] = useState(false);
-    const [editCategoryName, setEditCategoryName] = useState('');
-
-    // Fetch user categories from database
-    useEffect(() => {
-        const loadCategories = async () => {
-            try {
-                const res = await getCategories();
-                setCategories(res.map(c => c.name));
-            } catch (err) {
-                console.error("Failed to load categories", err);
-            }
-        };
-        loadCategories();
-    }, []);
-
-    // ── Build category suggestions: DB categories + currently selected category if it's not in the list ──
-    const suggestedCategories = [...new Set([...categories, form.category])].filter(Boolean).sort();
-
-    const handleAddCategorySubmit = async () => {
-        const trimmed = newCategoryName.trim();
-        if (trimmed) {
-            try {
-                await addCategory(trimmed);
-                setCategories(prev => [...new Set([...prev, trimmed])].sort());
-                setForm(prev => ({ ...prev, category: trimmed }));
-            } catch (err) {
-                console.error("Failed to add category", err);
-            }
-        }
-        setIsAddingNewCategory(false);
-        setNewCategoryName('');
-    };
-
-    const handleDeleteCategory = async () => {
-        const categoryToDelete = form.category;
-        if (!categoryToDelete) return;
-
-        if (window.confirm(`Are you sure you want to delete the category "${categoryToDelete}"? This will clear it from all transactions and recurring expenses.`)) {
-            try {
-                await deleteCategory(categoryToDelete);
-                setCategories(prev => prev.filter(c => c !== categoryToDelete));
-                setForm(prev => ({ ...prev, category: '' }));
-                if (onCategoryDeleted) {
-                    onCategoryDeleted(categoryToDelete);
-                }
-            } catch (err) {
-                console.error("Failed to delete category", err);
-            }
-        }
-    };
-
-    const handleNewCategoryKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            handleAddCategorySubmit();
-        }
-    };
-
-    const handleEditCategorySubmit = async () => {
-        const oldName = form.category;
-        const newName = editCategoryName?.trim();
-        if (!oldName || !newName || oldName === newName) {
-            setIsEditingCategory(false);
-            return;
-        }
-
-        try {
-            await updateCategory(oldName, newName);
-            setCategories(prev => prev.map(c => c === oldName ? newName : c).sort());
-            setForm(prev => ({ ...prev, category: newName }));
-            setIsEditingCategory(false);
-            if (onCategoryUpdated) {
-                onCategoryUpdated(oldName, newName);
-            }
-        } catch (err) {
-            console.error("Failed to edit category", err);
-        }
-    };
-
-    const handleEditCategoryKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            handleEditCategorySubmit();
         }
     };
 
@@ -189,6 +131,14 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        
+        let finalMainCategory = form.mainCategory;
+        let finalSubCategory = form.subCategory;
+        if (form.transactionType === 'inflow' && isReceivablePayment) {
+            finalMainCategory = 'Others';
+            finalSubCategory = 'Receivable';
+        }
+
         const payload = {
             name:            form.name.trim(),
             amount:          parseFloat(form.amount),
@@ -198,7 +148,9 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
             accountId:       showAccountDropdown ? (form.accountId || null) : null,
             cardId:          showCardDropdown    ? (form.cardId    || null) : null,
             expenseType:     showExpenseFields   ? form.expenseType         : null,
-            category:        form.transactionType === 'inflow' && isReceivablePayment ? 'Receivable' : (showExpenseFields ? (form.category?.trim() || null) : null),
+            category:        form.transactionType === 'inflow' && isReceivablePayment ? 'Receivable' : (form.subCategory || null),
+            mainCategory:    finalMainCategory || 'Others',
+            subCategory:     finalSubCategory || 'Others',
             receivableId:    form.transactionType === 'inflow' && isReceivablePayment ? (selectedReceivableId || null) : null
         };
         onSubmit(payload);
@@ -262,7 +214,12 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                         <button
                             key={type}
                             type="button"
-                            onClick={() => setForm(prev => ({ ...prev, transactionType: type }))}
+                            onClick={() => {
+                                setForm(prev => ({
+                                    ...prev,
+                                    transactionType: type
+                                }));
+                            }}
                             className={`py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 ${
                                 form.transactionType === type
                                     ? type === 'expense'
@@ -319,6 +276,56 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                             )}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* ── Category Fields (shown for both Inflow and Expense, except if receivable check is active) ── */}
+            {!isReceivablePayment && (
+                <div className="grid grid-cols-2 gap-3 animate-fadeIn">
+                    <div>
+                        <label className={labelCls}>Main Category</label>
+                        <select
+                            value={form.mainCategory}
+                            onChange={(e) => {
+                                const newMain = e.target.value;
+                                const catObj = categories.find(c => c.name === newMain);
+                                const subList = catObj ? (catObj.subcategories || []) : [];
+                                const defaultSub = subList.includes('Others') ? 'Others' : (subList[0] || '');
+                                setForm(prev => ({ 
+                                    ...prev, 
+                                    mainCategory: newMain,
+                                    subCategory: defaultSub
+                                }));
+                            }}
+                            className={inputCls}
+                            required
+                        >
+                            <option value="">Select a category</option>
+                            {categories.map(c => (
+                                <option key={c._id} value={c.name}>{c.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Subcategory</label>
+                        <select
+                            value={form.subCategory}
+                            onChange={set('subCategory')}
+                            className={inputCls}
+                            required
+                            disabled={!form.mainCategory}
+                        >
+                            <option value="">Select a subcategory</option>
+                            {(() => {
+                                const catObj = categories.find(c => c.name === form.mainCategory);
+                                if (!catObj) return null;
+                                const subList = catObj.subcategories || [];
+                                return subList.map(sub => (
+                                    <option key={sub} value={sub}>{sub}</option>
+                                ));
+                            })()}
+                        </select>
+                    </div>
                 </div>
             )}
 
@@ -406,138 +413,18 @@ export default function TransactionForm({ initial, cards = [], accounts = [], al
                 </div>
             )}
 
-            {/* ── Expense-only fields ── */}
+            {/* ── Expense Type (Expense only) ── */}
             {showExpenseFields && (
-                <div className="grid grid-cols-2 gap-3 animate-fadeIn">
-                    <div>
-                        <label className={labelCls}>Expense Type</label>
-                        <select
-                            value={form.expenseType}
-                            onChange={set('expenseType')}
-                            className={inputCls}
-                        >
-                            <option value="variable">Variable</option>
-                            <option value="fixed">Fixed</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Category</label>
-                        {isAddingNewCategory ? (
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={newCategoryName}
-                                    onChange={e => setNewCategoryName(e.target.value)}
-                                    onKeyDown={handleNewCategoryKeyDown}
-                                    placeholder="New category name"
-                                    className={`${inputCls} flex-1`}
-                                    autoFocus
-                                />
-                                <button
-                                    type="button"
-                                    onClick={handleAddCategorySubmit}
-                                    className="px-3 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-100 transition flex items-center justify-center shrink-0"
-                                    title="Add Category"
-                                >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => { setIsAddingNewCategory(false); setNewCategoryName(''); }}
-                                    className="px-3 border border-skylight/40 text-bluebird/60 rounded-xl hover:bg-skylight/10 transition flex items-center justify-center shrink-0"
-                                    title="Cancel"
-                                >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
-                            </div>
-                        ) : isEditingCategory ? (
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={editCategoryName}
-                                    onChange={e => setEditCategoryName(e.target.value)}
-                                    onKeyDown={handleEditCategoryKeyDown}
-                                    placeholder="Category name"
-                                    className={`${inputCls} flex-1`}
-                                    autoFocus
-                                />
-                                <button
-                                    type="button"
-                                    onClick={handleEditCategorySubmit}
-                                    className="px-3 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-100 transition flex items-center justify-center shrink-0"
-                                    title="Save Category"
-                                >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => { setIsEditingCategory(false); setEditCategoryName(''); }}
-                                    className="px-3 border border-skylight/40 text-bluebird/60 rounded-xl hover:bg-skylight/10 transition flex items-center justify-center shrink-0"
-                                    title="Cancel"
-                                >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="flex gap-2">
-                                <select
-                                    value={form.category}
-                                    onChange={set('category')}
-                                    className={`${inputCls} flex-1`}
-                                >
-                                    <option value="">Select a category</option>
-                                    {suggestedCategories.map(cat => (
-                                        <option key={cat} value={cat}>{cat}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAddingNewCategory(true)}
-                                    className="px-3 bg-skylight/20 border border-skylight/40 text-ocean rounded-xl hover:bg-skylight/30 hover:border-blueberry/30 transition flex items-center justify-center shrink-0"
-                                    title="Add new category"
-                                >
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                                {form.category && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setIsEditingCategory(true);
-                                                setEditCategoryName(form.category);
-                                            }}
-                                            className="px-3 bg-blue-50 border border-blue-200 text-blue-600 rounded-xl hover:bg-blue-100 transition flex items-center justify-center shrink-0 animate-fadeIn"
-                                            title="Edit selected category"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                            </svg>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleDeleteCategory}
-                                            className="px-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-100 transition flex items-center justify-center shrink-0 animate-fadeIn"
-                                            title="Delete selected category"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                            </svg>
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        )}
-                    </div>
+                <div className="animate-fadeIn">
+                    <label className={labelCls}>Expense Type</label>
+                    <select
+                        value={form.expenseType}
+                        onChange={set('expenseType')}
+                        className={inputCls}
+                    >
+                        <option value="variable">Variable</option>
+                        <option value="fixed">Fixed</option>
+                    </select>
                 </div>
             )}
 

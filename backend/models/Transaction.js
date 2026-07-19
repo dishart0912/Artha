@@ -65,6 +65,16 @@ const transactionSchema = new mongoose.Schema({
         type: String,
         trim: true,
         default: null
+    },
+    mainCategory: {
+        type: String,
+        trim: true,
+        default: 'Others'
+    },
+    subCategory: {
+        type: String,
+        trim: true,
+        default: 'Others'
     }
 }, {
     timestamps: true

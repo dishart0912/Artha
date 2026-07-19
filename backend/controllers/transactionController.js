@@ -76,7 +76,8 @@ const addTransaction = async (req, res) => {
         const {
             name, amount, date, paymentMode,
             transactionType, cardId, accountId,
-            expenseType, category, receivableId
+            expenseType, category, receivableId,
+            mainCategory, subCategory
         } = req.body;
 
         // ── Validation ───────────────────────────────────────────────────────
@@ -99,6 +100,8 @@ const addTransaction = async (req, res) => {
         }
 
         const finalCategory = linkedReceivable ? 'Receivable' : (category || null);
+        const finalMainCategory = linkedReceivable ? 'Others' : (mainCategory || 'Others');
+        const finalSubCategory = linkedReceivable ? 'Receivable' : (subCategory || 'Others');
 
         // ── Credit card billing status ────────────────────────────────────────
         const billingStatus =
@@ -118,7 +121,9 @@ const addTransaction = async (req, res) => {
             cardId: cardId || null,
             billingStatus,
             expenseType: expenseType || null,
-            category: finalCategory
+            category: finalCategory,
+            mainCategory: finalMainCategory,
+            subCategory: finalSubCategory
         });
 
         // ── Update receivable if linked ──────────────────────────────────────
@@ -217,7 +222,7 @@ const updateTransaction = async (req, res) => {
         const {
             name, amount, date, paymentMode,
             transactionType, cardId, accountId,
-            expenseType, category
+            expenseType, category, mainCategory, subCategory
         } = req.body;
 
         // ── Validation ───────────────────────────────────────────────────────
@@ -254,7 +259,9 @@ const updateTransaction = async (req, res) => {
             cardId: cardId || null,
             billingStatus,
             expenseType: expenseType || null,
-            category: category || null
+            category: category || null,
+            mainCategory: mainCategory || 'Others',
+            subCategory: subCategory || 'Others'
         };
 
         const updatedTransaction = await Transaction.findByIdAndUpdate(
@@ -406,7 +413,10 @@ const payCardBill = async (req, res) => {
             transactionType: 'inflow',
             cardId: card._id,
             accountId: needsAccount ? accountId : null,
-            billingStatus: null
+            billingStatus: null,
+            category: 'Others',
+            mainCategory: 'Others',
+            subCategory: 'Others'
         });
 
         if (needsAccount && accountId) {

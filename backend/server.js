@@ -9,7 +9,11 @@ const recurringRoutes = require('./routes/recurringRoutes');
 const emiRoutes = require('./routes/emiRoutes');
 dotenv.config();
 console.log("Loaded FATHER_USER_ID:", process.env.FATHER_USER_ID);
-connectDB();
+
+const { runMigration } = require('./utils/migration');
+connectDB().then(() => {
+    runMigration();
+});
 
 const app = express();
 

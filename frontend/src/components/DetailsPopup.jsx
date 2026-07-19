@@ -101,11 +101,11 @@ export default function DetailsPopup({ item, onClose }) {
                     </span>
                   </div>
                 )}
-                {item.category && (
+                {(item.mainCategory || item.category) && (
                   <div className="flex justify-between border-b border-skylight/10 pb-2">
                     <span className="text-bluebird/60">Category:</span>
                     <span className="font-semibold text-ocean bg-skylight/20 px-2 py-0.5 rounded-full text-[10px]">
-                      {item.category}
+                      {item.mainCategory ? `${item.mainCategory} > ${item.subCategory}` : item.category}
                     </span>
                   </div>
                 )}

@@ -90,7 +90,7 @@ export const exportTransactionsPDF = (transactions, filterCategory = 'all', mont
       t.name,
       t.transactionType === 'inflow' ? 'Inflow' : 'Expense',
       t.paymentMode.replace(/_/g, ' '),
-      t.category    || '-',
+      t.mainCategory ? `${t.mainCategory} > ${t.subCategory}` : (t.category || '-'),
       t.expenseType || '-',
       `${t.transactionType === 'inflow' ? '+' : '-'} ${fmt(t.amount)}`,
     ]),
