@@ -51,7 +51,7 @@ export default function SpendingChart({ transactions, selectedMonth }) {
       const bucket = months.find(m => m.key === key);
       if (!bucket) return;
       // Exclude credit card payments from inflow to match dashboard metrics
-      if (txn.transactionType === 'inflow' && txn.paymentMode !== 'credit_card') {
+      if (txn.transactionType === 'inflow' && !txn.cardId) {
         bucket.inflow += txn.amount;
       }
       if (txn.transactionType === 'expense') {

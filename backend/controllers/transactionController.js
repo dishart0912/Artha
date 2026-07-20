@@ -325,7 +325,7 @@ const deleteTransaction = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const payCardBill = async (req, res) => {
     try {
-        const { cardId, paymentMode, accountId } = req.body;
+        const { cardId, paymentMode, accountId, amount } = req.body;
         if (!cardId) {
             return res.status(400).json({ message: 'Card ID is required' });
         }
@@ -365,49 +365,58 @@ const payCardBill = async (req, res) => {
         const payments = cardTransactions.filter(t => t.transactionType === 'inflow');
         const totalPayments = payments.reduce((sum, t) => sum + t.amount, 0);
 
-        const getStatementDateForTxn = (txnDate, billingDate) => {
-            const d = new Date(txnDate);
-            let year = d.getFullYear();
-            let month = d.getMonth();
-            if (d.getDate() > billingDate) {
-                month += 1;
-                if (month > 11) {
-                    month = 0;
-                    year += 1;
+        let finalAmount;
+        if (amount !== undefined) {
+            finalAmount = parseFloat(amount);
+            if (isNaN(finalAmount) || finalAmount <= 0) {
+                return res.status(400).json({ message: 'Payment amount must be a positive number.' });
+            }
+        } else {
+            const getStatementDateForTxn = (txnDate, billingDate) => {
+                const d = new Date(txnDate);
+                let year = d.getFullYear();
+                let month = d.getMonth();
+                if (d.getDate() > billingDate) {
+                    month += 1;
+                    if (month > 11) {
+                        month = 0;
+                        year += 1;
+                    }
+                }
+                return new Date(year, month, billingDate, 23, 59, 59, 999);
+            };
+
+            const today = new Date();
+            let stmtYear = today.getFullYear();
+            let stmtMonth = today.getMonth();
+            if (today.getDate() < card.billingDate) {
+                stmtMonth -= 1;
+                if (stmtMonth < 0) {
+                    stmtMonth = 11;
+                    stmtYear -= 1;
                 }
             }
-            return new Date(year, month, billingDate, 23, 59, 59, 999);
-        };
+            const latestStatementDate = new Date(stmtYear, stmtMonth, card.billingDate, 23, 59, 59, 999);
 
-        const today = new Date();
-        let stmtYear = today.getFullYear();
-        let stmtMonth = today.getMonth();
-        if (today.getDate() < card.billingDate) {
-            stmtMonth -= 1;
-            if (stmtMonth < 0) {
-                stmtMonth = 11;
-                stmtYear -= 1;
+            const billedExpenses = expenses.filter(t => {
+                const stmtDate = getStatementDateForTxn(t.date, card.billingDate);
+                return stmtDate <= latestStatementDate;
+            });
+
+            const totalBilledExpenses = billedExpenses.reduce((sum, t) => sum + t.amount, 0);
+            const billedAmount = Math.max(0, totalBilledExpenses - totalPayments);
+
+            if (billedAmount <= 0) {
+                return res.status(400).json({ message: 'Billed amount is already paid / zero.' });
             }
-        }
-        const latestStatementDate = new Date(stmtYear, stmtMonth, card.billingDate, 23, 59, 59, 999);
-
-        const billedExpenses = expenses.filter(t => {
-            const stmtDate = getStatementDateForTxn(t.date, card.billingDate);
-            return stmtDate <= latestStatementDate;
-        });
-
-        const totalBilledExpenses = billedExpenses.reduce((sum, t) => sum + t.amount, 0);
-        const billedAmount = Math.max(0, totalBilledExpenses - totalPayments);
-
-        if (billedAmount <= 0) {
-            return res.status(400).json({ message: 'Billed amount is already paid / zero.' });
+            finalAmount = billedAmount;
         }
 
-        // Create an inflow payment transaction of amount = billedAmount
+        // Create an inflow payment transaction of amount = finalAmount
         const paymentTxn = await Transaction.create({
             userId: req.user._id,
             name: `Card Payment - ${card.cardName}`,
-            amount: billedAmount,
+            amount: finalAmount,
             date: new Date(),
             paymentMode,
             transactionType: 'inflow',
@@ -420,7 +429,7 @@ const payCardBill = async (req, res) => {
         });
 
         if (needsAccount && accountId) {
-            await applyBalanceDelta(accountId, -billedAmount);
+            await applyBalanceDelta(accountId, -finalAmount);
         }
 
         res.status(200).json({

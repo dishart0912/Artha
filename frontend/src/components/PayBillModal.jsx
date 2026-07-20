@@ -8,6 +8,14 @@ export default function PayBillModal({ card, onClose, onConfirm, loading }) {
   const [bankAccounts, setBankAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [error, setError] = useState('');
+  const [paymentType, setPaymentType] = useState(card.billedAmount > 0 ? 'billed' : 'outstanding');
+  const [customAmount, setCustomAmount] = useState('');
+
+  const payAmount = paymentType === 'billed'
+    ? card.billedAmount
+    : paymentType === 'outstanding'
+      ? card.outstanding
+      : parseFloat(customAmount) || 0;
 
   useEffect(() => {
     let active = true;
@@ -32,8 +40,12 @@ export default function PayBillModal({ card, onClose, onConfirm, loading }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (payAmount <= 0) {
+      setError('Please select or enter a valid positive amount.');
+      return;
+    }
     const needsAccount = ['upi', 'debit_card', 'bank_transfer'].includes(paymentMode);
-    onConfirm(paymentMode, needsAccount ? accountId : null);
+    onConfirm(payAmount, paymentMode, needsAccount ? accountId : null);
   };
 
   const inputClass = `
@@ -75,9 +87,78 @@ export default function PayBillModal({ card, onClose, onConfirm, loading }) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="bg-clouds/50 rounded-2xl p-4 border border-skylight/20 text-center">
-            <span className="text-xs font-medium text-bluebird">Billed Amount Due</span>
-            <h2 className="text-2xl font-bold text-red-500 mt-1">{formatCurrency(card.billedAmount)}</h2>
+          <div className="space-y-2.5">
+            <label className={labelClass}>Select Amount to Pay</label>
+            <div className="grid grid-cols-1 gap-2">
+              {card.billedAmount > 0 && (
+                <label className={`flex items-center justify-between p-3.5 rounded-xl border-2 transition-all duration-150 cursor-pointer ${
+                  paymentType === 'billed' ? 'bg-emerald-50/50 border-emerald-500 text-ocean' : 'bg-white border-skylight/30 hover:border-blueberry/30 text-ocean/85'
+                }`}>
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="radio"
+                      name="paymentType"
+                      value="billed"
+                      checked={paymentType === 'billed'}
+                      onChange={() => setPaymentType('billed')}
+                      className="text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-semibold">Billed Amount Due</span>
+                  </div>
+                  <span className="text-sm font-extrabold text-red-500">{formatCurrency(card.billedAmount)}</span>
+                </label>
+              )}
+              <label className={`flex items-center justify-between p-3.5 rounded-xl border-2 transition-all duration-150 cursor-pointer ${
+                paymentType === 'outstanding' ? 'bg-emerald-50/50 border-emerald-500 text-ocean' : 'bg-white border-skylight/30 hover:border-blueberry/30 text-ocean/85'
+              }`}>
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="radio"
+                    name="paymentType"
+                    value="outstanding"
+                    checked={paymentType === 'outstanding'}
+                    onChange={() => setPaymentType('outstanding')}
+                    className="text-emerald-500 focus:ring-emerald-500"
+                  />
+                  <span className="text-xs font-semibold">
+                    {card.billedAmount === 0 ? 'Total Outstanding (Pay in Advance)' : 'Total Outstanding'}
+                  </span>
+                </div>
+                <span className="text-sm font-extrabold text-ocean">{formatCurrency(card.outstanding)}</span>
+              </label>
+              <label className={`flex flex-col gap-2 p-3.5 rounded-xl border-2 transition-all duration-150 cursor-pointer ${
+                paymentType === 'custom' ? 'bg-emerald-50/50 border-emerald-500 text-ocean' : 'bg-white border-skylight/30 hover:border-blueberry/30 text-ocean/85'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="radio"
+                      name="paymentType"
+                      value="custom"
+                      checked={paymentType === 'custom'}
+                      onChange={() => setPaymentType('custom')}
+                      className="text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-semibold">Custom Amount</span>
+                  </div>
+                </div>
+                {paymentType === 'custom' && (
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-ocean/50">₹</span>
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      min="0.01"
+                      step="0.01"
+                      value={customAmount}
+                      onChange={(e) => setCustomAmount(e.target.value)}
+                      className="w-full pl-7 pr-3 py-2 rounded-lg border border-skylight/40 bg-white text-sm font-semibold text-ocean placeholder:text-bluebird/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      required
+                    />
+                  </div>
+                )}
+              </label>
+            </div>
           </div>
 
           <div>
