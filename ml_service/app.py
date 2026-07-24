@@ -116,8 +116,21 @@ def scan_receipt():
             if uploaded_file.filename == "":
                 return jsonify({"error": "No file selected for upload"}), 400
 
-            # Save uploaded file to temporary directory
-            suffix = os.path.splitext(uploaded_file.filename)[1].lower()
+            # Save uploaded file to temporary directory with proper suffix
+            filename = uploaded_file.filename or "receipt.pdf"
+            suffix = os.path.splitext(filename)[1].lower()
+
+            # Inspect stream bytes or mimetype if extension is missing
+            if not suffix:
+                header = uploaded_file.read(5)
+                uploaded_file.seek(0)
+                if header.startswith(b"%PDF") or uploaded_file.mimetype == "application/pdf":
+                    suffix = ".pdf"
+                elif uploaded_file.mimetype and uploaded_file.mimetype.startswith("image/"):
+                    suffix = f".{uploaded_file.mimetype.split('/')[-1]}"
+                else:
+                    suffix = ".pdf"
+
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
                 uploaded_file.save(temp_file.name)
                 temp_path = temp_file.name

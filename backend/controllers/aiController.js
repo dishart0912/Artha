@@ -117,11 +117,20 @@ const scanReceipt = async (req, res) => {
             userCategories = await Category.find({ userId: req.user._id }).lean();
         }
 
+        // Determine filename with proper extension
+        let filename = req.file.originalname || 'receipt.pdf';
+        const isPdf = req.file.mimetype === 'application/pdf' || 
+                      (req.file.buffer && req.file.buffer.slice(0, 4).toString() === '%PDF');
+        
+        if (isPdf && !filename.toLowerCase().endsWith('.pdf')) {
+            filename += '.pdf';
+        }
+
         // Use form-data package to build proper multipart request with boundary header
         const FormData = require('form-data');
         const form = new FormData();
         form.append('file', req.file.buffer, {
-            filename: req.file.originalname || 'receipt.pdf',
+            filename: filename,
             contentType: req.file.mimetype || 'application/pdf'
         });
         form.append('userCategories', JSON.stringify(userCategories));

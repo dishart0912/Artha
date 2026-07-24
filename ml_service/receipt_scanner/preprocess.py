@@ -44,38 +44,85 @@ def deskew(image):
     print(f"[DESKEW] Corrected tilt angle by {angle:.2f} degrees.")
     return rotated
 
+def is_pdf_file(file_path):
+    """
+    Check if file is a PDF either by file extension (.pdf) or by magic header bytes (%PDF-).
+    """
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".pdf":
+        return True
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(5)
+            return header.startswith(b"%PDF")
+    except Exception:
+        return False
+
 def load_image_or_pdf(file_path):
     """
     Loads an image file (.png, .jpg, .jpeg) or renders Page 1 of a PDF (.pdf)
-    into an OpenCV BGR image array.
+    into an OpenCV BGR image array. Auto-detects PDFs via extension or magic bytes (%PDF-).
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found at path: {file_path}")
 
-    ext = os.path.splitext(file_path)[1].lower()
-
-    if ext == ".pdf":
+    if is_pdf_file(file_path):
+        pdf_errors = []
+        
+        # Primary Renderer: pypdfium2
         try:
             import pypdfium2 as pdfium
             print(f"[PDF] Rendering Page 1 of PDF file: '{file_path}' at 300 DPI...")
             pdf = pdfium.PdfDocument(file_path)
+            if len(pdf) == 0:
+                raise ValueError("Uploaded PDF file contains 0 pages.")
             page = pdf[0]
-            # Render page at 300 DPI (scale=300/72 ≈ 4.16) for crisp OCR text
             image_pil = page.render(scale=300/72).to_pil()
-            # Convert PIL image to OpenCV BGR numpy array
             image_np = np.array(image_pil)
             image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
             return image_bgr
         except ImportError:
-            raise ImportError(
-                "PDF support requires 'pypdfium2'. Please install it using: pip install pypdfium2"
-            )
-    else:
-        # Standard raster image load
-        image = cv2.imread(file_path)
-        if image is None:
-            raise ValueError(f"Could not decode image file at: {file_path}")
-        return image
+            pdf_errors.append("pypdfium2 module not installed.")
+        except Exception as e:
+            print(f"[PDF WARN] pypdfium2 rendering failed: {e}")
+            pdf_errors.append(f"pypdfium2 error: {e}")
+
+        # Fallback Renderer 1: PyMuPDF (fitz)
+        try:
+            import fitz
+            doc = fitz.open(file_path)
+            if len(doc) > 0:
+                page = doc[0]
+                pix = page.get_pixmap(dpi=300)
+                image_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+                if pix.n == 4:
+                    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGBA2BGR)
+                else:
+                    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+                return image_bgr
+        except Exception as e:
+            pdf_errors.append(f"PyMuPDF error: {e}")
+
+        # Fallback Renderer 2: pdf2image
+        try:
+            from pdf2image import convert_from_path
+            images = convert_from_path(file_path, first_page=1, last_page=1, dpi=300)
+            if images:
+                image_np = np.array(images[0])
+                return cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            pdf_errors.append(f"pdf2image error: {e}")
+
+        raise ValueError(
+            f"Failed to read PDF file. Errors: {'; '.join(pdf_errors)}. "
+            "Please verify the PDF is valid and not password protected."
+        )
+
+    # Standard raster image load
+    image = cv2.imread(file_path)
+    if image is None:
+        raise ValueError(f"Could not decode image file at: {file_path}")
+    return image
 
 def preprocess_receipt(file_path):
     """
