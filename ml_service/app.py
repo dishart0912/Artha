@@ -36,12 +36,16 @@ DEFAULT_CATEGORIES = [
     {"name": "Others", "subcategories": ["Others"]}
 ]
 
+@app.before_request
+def log_incoming_request():
+    print(f"[FLASK BEFORE_REQUEST] Incoming request: {request.method} {request.path} from {request.remote_addr}", flush=True)
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
         "status": "online",
         "service": "Artha Dynamic AI Category Predictor & Receipt Scanner",
-        "ml_model_loaded": receipt_ml_model is not None
+        "ml_model_loaded": get_ml_model() is not None
     }), 200
 
 @app.route("/classify-item", methods=["POST"])
@@ -110,6 +114,7 @@ def scan_receipt():
     End-to-end Smart Receipt Scanner endpoint:
     File/Image Upload -> OpenCV Preprocess -> RapidOCR -> Spatial Parser -> Dynamic Category Matching
     """
+    print(f"[FLASK ROUTE ENTERED] POST /scan-receipt | Content-Length: {request.content_length} bytes", flush=True)
     import json
     import tempfile
 

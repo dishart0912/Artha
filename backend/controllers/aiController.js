@@ -135,12 +135,18 @@ const scanReceipt = async (req, res) => {
         });
         form.append('userCategories', JSON.stringify(userCategories));
 
-        const mlResponse = await axios.post(`${ML_SERVICE_URL}/scan-receipt`, form, {
+        const targetUrl = `${ML_SERVICE_URL}/scan-receipt`;
+        console.log(`[EXPRESS -> ML] Step 1: Dispatching request to target URL: ${targetUrl}`);
+        console.log(`[EXPRESS -> ML] Step 2: Payload file='${filename}', bufferSize=${req.file.buffer?.length || 0} bytes`);
+
+        const mlResponse = await axios.post(targetUrl, form, {
             headers: form.getHeaders(),
             maxContentLength: Infinity,
             maxBodyLength: Infinity,
             timeout: 65000
         });
+
+        console.log(`[EXPRESS -> ML] Step 3: Received response from ML service with status ${mlResponse.status}`);
 
         if (mlResponse.data && mlResponse.data.success) {
             return res.status(200).json(mlResponse.data);
