@@ -25,3 +25,7 @@ export const deleteSubcategory = (mainCategory, subName, reassignTo) => {
 // Bulk Delete service
 export const bulkDeleteCategories = (mainCategories, subcategories) =>
     api.post('/api/categories/bulk-delete', { mainCategories, subcategories }).then(r => r.data);
+
+// AI Category Predictor
+export const predictCategory = (name) =>
+    api.post('/api/categories/predict', { name }).then(r => r.data);

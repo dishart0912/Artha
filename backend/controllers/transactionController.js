@@ -442,4 +442,85 @@ const payCardBill = async (req, res) => {
     }
 };
 
-module.exports = { addTransaction, getTransactions, updateTransaction, deleteTransaction, payCardBill };
+/**
+ * @desc    Bulk create itemized transactions from receipt scanner
+ * @route   POST /api/transactions/batch
+ * @access  Private
+ */
+const addBatchTransactions = async (req, res) => {
+    try {
+        const { items, paymentMode, bankAccountId, cardId, date, storeName, expenseType } = req.body;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ message: 'Please provide an array of itemized transactions.' });
+        }
+
+        const userId = req.user._id;
+        const txnDate = date ? new Date(date) : new Date();
+
+        // Validate paymentMode against enum
+        const validModes = ['cash', 'upi', 'credit_card', 'debit_card', 'bank_transfer'];
+        const safePaymentMode = (paymentMode && validModes.includes(paymentMode)) ? paymentMode : 'upi';
+
+        // Check if bank account ID or card ID are valid ObjectIds
+        const safeAccountId = (bankAccountId && bankAccountId !== 'null' && bankAccountId !== 'undefined') ? bankAccountId : null;
+        const safeCardId = (cardId && cardId !== 'null' && cardId !== 'undefined') ? cardId : null;
+
+        const createdTransactions = [];
+
+        for (const item of items) {
+            const rawDescription = item.description || item.name || 'Receipt Item';
+            const rawAmount = item.amount || item.price;
+            const numAmount = parseFloat(rawAmount);
+
+            if (isNaN(numAmount) || numAmount <= 0) continue;
+
+            const title = storeName ? `${storeName}: ${rawDescription}` : rawDescription;
+            const mainCat = item.mainCategory || 'Home';
+            const subCat = item.subCategory || 'Groceries';
+
+            // Compute billing status for credit cards if cardId provided
+            const billingStatus = (safePaymentMode === 'credit_card' && safeCardId) 
+                ? await computeBillingStatus(safeCardId, txnDate) 
+                : null;
+
+            const txnData = {
+                userId,
+                name: title.trim(),
+                amount: numAmount,
+                transactionType: 'expense',
+                paymentMode: safePaymentMode,
+                accountId: BANK_LINKED_MODES.includes(safePaymentMode) ? safeAccountId : null,
+                cardId: safePaymentMode === 'credit_card' ? safeCardId : null,
+                category: subCat || mainCat || 'Groceries',
+                mainCategory: mainCat,
+                subCategory: subCat,
+                expenseType: (expenseType === 'fixed' || expenseType === 'variable') ? expenseType : 'variable',
+                date: txnDate,
+                notes: 'Imported via Smart Receipt Scanner',
+                billingStatus
+            };
+
+            const txn = await Transaction.create(txnData);
+
+            // Adjust bank account balance if bank-linked mode
+            if (safeAccountId && BANK_LINKED_MODES.includes(safePaymentMode)) {
+                await applyBalanceDelta(safeAccountId, -numAmount);
+            }
+
+            createdTransactions.push(txn);
+        }
+
+        return res.status(201).json({
+            success: true,
+            count: createdTransactions.length,
+            transactions: createdTransactions
+        });
+
+    } catch (error) {
+        console.error('Error in addBatchTransactions:', error);
+        return res.status(500).json({ message: 'Failed to batch save transactions', error: error.message });
+    }
+};
+
+module.exports = { addTransaction, getTransactions, updateTransaction, deleteTransaction, payCardBill, addBatchTransactions };

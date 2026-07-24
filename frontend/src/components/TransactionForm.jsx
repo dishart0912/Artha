@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { getCategories } from '../services/categoryService';
+import { getCategories, predictCategory } from '../services/categoryService';
 import { getReceivables } from '../services/receivableService';
 import { formatCurrency } from '../utils/format';
+import ReceiptScannerModal from './ReceiptScannerModal';
 
 // Payment modes that require a bank account to be linked
 const BANK_LINKED_MODES = ['upi', 'debit_card', 'bank_transfer'];
@@ -36,6 +37,13 @@ export default function TransactionForm({
     const [loadingReceivables, setLoadingReceivables] = useState(false);
     const [isReceivablePayment, setIsReceivablePayment] = useState(false);
     const [selectedReceivableId, setSelectedReceivableId] = useState('');
+
+    // ── Receipt Scanner Modal state ──────────────────────────────────────────
+    const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+
+    // ── AI Prediction state ──────────────────────────────────────────────────
+    const [isPredicting, setIsPredicting] = useState(false);
+    const [aiPrediction, setAiPrediction] = useState(null);
 
     // ── Seed form when editing or using prefill ────────────────────────────────
     useEffect(() => {
@@ -111,6 +119,88 @@ export default function TransactionForm({
             }
         }
     };
+    // ── Helper to match AI predicted subCategory with User's actual DB categories ─────
+    const matchUserSubCategory = (predictedSub, userCategories) => {
+        if (!userCategories || userCategories.length === 0) {
+            return { mainCategory: '', subCategory: predictedSub || 'Others' };
+        }
+
+        const pSub = (predictedSub || '').toLowerCase();
+
+        // 1. Direct search for subcategory match in user's categories
+        for (const cat of userCategories) {
+            const subs = cat.subcategories || [];
+            for (const sub of subs) {
+                const sLower = sub.toLowerCase();
+                if (sLower === pSub || sLower.includes(pSub) || pSub.includes(sLower)) {
+                    return {
+                        mainCategory: cat.name,
+                        subCategory: sub
+                    };
+                }
+            }
+        }
+
+        // 2. Keyword mapping for common subcategories
+        for (const cat of userCategories) {
+            const subs = cat.subcategories || [];
+            for (const sub of subs) {
+                const sLower = sub.toLowerCase();
+                if ((pSub.includes('cafe') || pSub.includes('fast food') || pSub.includes('delivery')) && sLower.includes('food')) {
+                    return { mainCategory: cat.name, subCategory: sub };
+                }
+                if ((pSub.includes('cab') || pSub.includes('fuel') || pSub.includes('transit')) && (sLower.includes('travel') || sLower.includes('transport'))) {
+                    return { mainCategory: cat.name, subCategory: sub };
+                }
+                if ((pSub.includes('quick commerce') || pSub.includes('supermarket')) && sLower.includes('grocer')) {
+                    return { mainCategory: cat.name, subCategory: sub };
+                }
+                if ((pSub.includes('online') || pSub.includes('fashion') || pSub.includes('electronic')) && sLower.includes('shopping')) {
+                    return { mainCategory: cat.name, subCategory: sub };
+                }
+            }
+        }
+
+        // 3. Fallback to first category
+        const firstCat = userCategories[0];
+        return {
+            mainCategory: firstCat ? firstCat.name : '',
+            subCategory: (firstCat?.subcategories || [])[0] || 'Others'
+        };
+    };
+
+    // ── AI SubCategory Auto-Prediction effect (Debounced) ───────────────────────
+    useEffect(() => {
+        // Only run for new transactions when name has at least 3 chars
+        if (initial || !form.name || form.name.trim().length < 3 || isReceivablePayment) {
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            try {
+                setIsPredicting(true);
+                const res = await predictCategory(form.name.trim());
+                if (res && (res.subCategory || res.mainCategory)) {
+                    const matched = matchUserSubCategory(res.subCategory, categories);
+                    const finalMain = res.mainCategory || matched.mainCategory;
+                    const finalSub = res.subCategory || matched.subCategory;
+
+                    setAiPrediction(res);
+                    setForm(prev => ({
+                        ...prev,
+                        mainCategory: finalMain,
+                        subCategory: finalSub
+                    }));
+                }
+            } catch (err) {
+                console.warn("AI Prediction error:", err);
+            } finally {
+                setIsPredicting(false);
+            }
+        }, 400); // 400ms debounce
+
+        return () => clearTimeout(timer);
+    }, [form.name, initial, isReceivablePayment, categories]);
 
     // ── Derived flags ─────────────────────────────────────────────────────────
     const showAccountDropdown = BANK_LINKED_MODES.includes(form.paymentMode);
@@ -164,9 +254,29 @@ export default function TransactionForm({
     const labelCls = `block text-xs font-semibold text-bluebird/70 mb-1.5 uppercase tracking-wide`;
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {/* ── AI Receipt Scanner Banner Button ── */}
+                {!initial && (
+                    <div className="p-3 rounded-xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-500/20 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xl">📸</span>
+                            <div>
+                                <p className="text-xs font-bold text-indigo-900 m-0">Have a physical bill or PDF receipt?</p>
+                                <p className="text-[11px] text-indigo-700/80 m-0">Extract items & auto-categorize in seconds</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsReceiptModalOpen(true)}
+                            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-all flex items-center gap-1"
+                        >
+                            <span>🧾 Scan Bill</span>
+                        </button>
+                    </div>
+                )}
 
-            {/* ── Name ── */}
+                {/* ── Name ── */}
             <div>
                 <label className={labelCls}>Transaction Name</label>
                 <input
@@ -281,50 +391,72 @@ export default function TransactionForm({
 
             {/* ── Category Fields (shown for both Inflow and Expense, except if receivable check is active) ── */}
             {!isReceivablePayment && (
-                <div className="grid grid-cols-2 gap-3 animate-fadeIn">
-                    <div>
-                        <label className={labelCls}>Main Category</label>
-                        <select
-                            value={form.mainCategory}
-                            onChange={(e) => {
-                                const newMain = e.target.value;
-                                const catObj = categories.find(c => c.name === newMain);
-                                const subList = catObj ? (catObj.subcategories || []) : [];
-                                const defaultSub = subList.includes('Others') ? 'Others' : (subList[0] || '');
-                                setForm(prev => ({ 
-                                    ...prev, 
-                                    mainCategory: newMain,
-                                    subCategory: defaultSub
-                                }));
-                            }}
-                            className={inputCls}
-                            required
-                        >
-                            <option value="">Select a category</option>
-                            {categories.map(c => (
-                                <option key={c._id} value={c.name}>{c.name}</option>
-                            ))}
-                        </select>
+                <div className="space-y-1.5 animate-fadeIn">
+                    {/* AI Prediction Status Badge */}
+                    <div className="flex items-center justify-between px-1">
+                        <span className={labelCls}>Category Classification</span>
+                        {isPredicting ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blueberry animate-pulse">
+                                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                </svg>
+                                AI Predicting...
+                            </span>
+                        ) : aiPrediction ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                                ✨ AI Auto-Filled ({Math.round(aiPrediction.confidence * 100)}% match)
+                            </span>
+                        ) : null}
                     </div>
-                    <div>
-                        <label className={labelCls}>Subcategory</label>
-                        <select
-                            value={form.subCategory}
-                            onChange={set('subCategory')}
-                            className={inputCls}
-                            required
-                            disabled={!form.mainCategory}
-                        >
-                            <option value="">Select a subcategory</option>
-                            {(() => {
-                                const catObj = categories.find(c => c.name === form.mainCategory);
-                                if (!catObj) return null;
-                                const subList = catObj.subcategories || [];
-                                return subList.map(sub => (
-                                    <option key={sub} value={sub}>{sub}</option>
-                                ));
-                            })()}
-                        </select>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <select
+                                value={form.mainCategory}
+                                onChange={(e) => {
+                                    const newMain = e.target.value;
+                                    const catObj = categories.find(c => c.name === newMain);
+                                    const subList = catObj ? (catObj.subcategories || []) : [];
+                                    const defaultSub = subList.includes('Others') ? 'Others' : (subList[0] || '');
+                                    setForm(prev => ({ 
+                                        ...prev, 
+                                        mainCategory: newMain,
+                                        subCategory: defaultSub
+                                    }));
+                                    setAiPrediction(null); // Clear AI badge if user overrides manually
+                                }}
+                                className={inputCls}
+                                required
+                            >
+                                <option value="">Select main category</option>
+                                {categories.map(c => (
+                                    <option key={c._id} value={c.name}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <select
+                                value={form.subCategory}
+                                onChange={(e) => {
+                                    setForm(prev => ({ ...prev, subCategory: e.target.value }));
+                                    setAiPrediction(null); // Clear AI badge if user overrides manually
+                                }}
+                                className={inputCls}
+                                required
+                                disabled={!form.mainCategory}
+                            >
+                                <option value="">Select subcategory</option>
+                                {(() => {
+                                    const catObj = categories.find(c => c.name === form.mainCategory);
+                                    if (!catObj) return null;
+                                    const subList = catObj.subcategories || [];
+                                    return subList.map(sub => (
+                                        <option key={sub} value={sub}>{sub}</option>
+                                    ));
+                                })()}
+                            </select>
+                        </div>
                     </div>
                 </div>
             )}
@@ -454,5 +586,19 @@ export default function TransactionForm({
                 </button>
             </div>
         </form>
+
+        {/* ── Receipt Scanner Modal Render ── */}
+        <ReceiptScannerModal 
+            isOpen={isReceiptModalOpen}
+            onClose={() => setIsReceiptModalOpen(false)}
+            categories={categories}
+            accounts={accounts}
+            cards={cards}
+            onSuccess={() => {
+                setIsReceiptModalOpen(false);
+                if (onSubmit) onSubmit({ batchInserted: true });
+            }}
+        />
+    </>
     );
 }

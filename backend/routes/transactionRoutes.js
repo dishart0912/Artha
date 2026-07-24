@@ -1,11 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { addTransaction, getTransactions, updateTransaction, deleteTransaction, payCardBill } = require('../controllers/transactionController');
+const { addTransaction, getTransactions, updateTransaction, deleteTransaction, payCardBill, addBatchTransactions } = require('../controllers/transactionController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.route('/')
     .post(protect, addTransaction)
     .get(protect, getTransactions);
+
+router.route('/batch')
+    .post(protect, addBatchTransactions);
 
 router.route('/pay-bill')
     .post(protect, payCardBill);

@@ -10,11 +10,21 @@ const {
     deleteSubcategory,
     bulkDeleteCategories
 } = require('../controllers/categoryController');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
+
+const { predictCategory, scanReceipt } = require('../controllers/aiController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.route('/')
     .get(protect, getCategories)
     .post(protect, addCategory);
+
+router.route('/predict')
+    .post(protect, predictCategory);
+
+router.route('/scan-receipt')
+    .post(protect, upload.single('file'), scanReceipt);
 
 router.route('/bulk-delete')
     .post(protect, bulkDeleteCategories);

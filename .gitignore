@@ -32,3 +32,10 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+ml_service/receipt_scanner/output_steps/
