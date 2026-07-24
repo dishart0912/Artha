@@ -1,10 +1,14 @@
+import os
+import joblib
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
 print("APP.PY LOADED", flush=True)
+
 app = Flask(__name__)
 
 print("FLASK APP CREATED", flush=True)
-import os
-import joblib
-from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dynamic_matcher import match_transaction_to_user_categories
 
