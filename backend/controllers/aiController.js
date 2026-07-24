@@ -145,13 +145,23 @@ const scanReceipt = async (req, res) => {
         if (mlResponse.data && mlResponse.data.success) {
             return res.status(200).json(mlResponse.data);
         } else {
-            return res.status(500).json({ message: 'Receipt scanning returned an invalid response.' });
+            console.error('[AI Controller] ML service returned success=false:', mlResponse.data);
+            return res.status(500).json({ message: mlResponse.data?.error || 'Receipt scanning returned an invalid response.' });
         }
     } catch (error) {
-        console.error('Error in scanReceipt:', error);
+        console.error('[AI Controller] Error in scanReceipt:', error.message);
+        let downstreamError = error.message;
+        
+        if (error.response) {
+            console.error('[AI Controller] ML Service Error Response Data:', JSON.stringify(error.response.data));
+            console.error('[AI Controller] ML Service Error Status:', error.response.status);
+            downstreamError = error.response.data?.error || error.response.data?.message || downstreamError;
+        }
+        
         return res.status(500).json({
-            message: 'Failed to scan receipt image',
-            error: error.response?.data?.error || error.message
+            message: downstreamError,
+            error: downstreamError,
+            details: error.response?.data
         });
     }
 };
