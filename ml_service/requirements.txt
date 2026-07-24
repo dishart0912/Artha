@@ -8,3 +8,4 @@ opencv-python-headless
 PyMuPDF
 rapidocr-onnxruntime
 Pillow
+psutil

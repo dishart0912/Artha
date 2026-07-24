@@ -1,4 +1,5 @@
 import os
+import time
 import joblib
 
 from flask import Flask, request, jsonify
@@ -7,18 +8,15 @@ from flask_cors import CORS
 print("APP.PY LOADED", flush=True)
 
 app = Flask(__name__)
+CORS(app)
 
 print("FLASK APP CREATED", flush=True)
-from flask_cors import CORS
+
 from dynamic_matcher import match_transaction_to_user_categories
 
-# Import receipt scanner pipeline modules
 from receipt_scanner.preprocess import load_image_or_pdf, preprocess_receipt
 from receipt_scanner.ocr_reader import run_ocr
 from receipt_scanner.receipt_parser import parse_receipt_items_spatial
-
-app = Flask(__name__)
-CORS(app)
 
 # Load trained Machine Learning model pipeline on startup
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "receipt_scanner", "receipt_model.joblib")

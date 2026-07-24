@@ -1,7 +1,32 @@
+import time
 import cv2
 import numpy as np
 import os
 import sys
+import gc
+
+# Helper for process RSS memory tracking
+def get_process_rss_mb():
+    try:
+        import psutil
+        return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+    except Exception:
+        try:
+            import resource
+            return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+        except Exception:
+            return 0.0
+
+def log_step(step_name, start_time, img=None):
+    elapsed = time.time() - start_time
+    rss = get_process_rss_mb()
+    img_str = "N/A"
+    if img is not None and hasattr(img, "shape"):
+        h, w = img.shape[:2]
+        nbytes_mb = img.nbytes / (1024 * 1024)
+        img_str = f"{w}x{h} px ({nbytes_mb:.2f} MB)"
+    print(f"[PIPELINE TRACKER] Step: '{step_name}' | Elapsed: {elapsed:.3f}s | Image: {img_str} | Process RSS: {rss:.2f} MB", flush=True)
+    return time.time()
 
 # We import our Phase 1 preprocessor so OCR always works on a clean image
 sys.path.insert(0, os.path.dirname(__file__))
@@ -10,17 +35,16 @@ from preprocess import load_image_or_pdf, preprocess_receipt
 # ---------------------------------------------------------------------------
 # SECTION 1: Initialize the OCR Engine
 # ---------------------------------------------------------------------------
-# RapidOCR() creates the OCR engine.
-# On first run: downloads DB-Net + CLS + CRNN model weights (~150MB) to cache.
-# On every subsequent run: loads from cache instantly (no download needed).
 from rapidocr_onnxruntime import RapidOCR
 _ocr_engine = None
 
 def get_ocr_engine():
     global _ocr_engine
     if _ocr_engine is None:
-        print("[OCR] Lazy loading RapidOCR models into memory...")
+        t0 = time.time()
+        print(f"[OCR] Lazy loading RapidOCR ONNX models into memory (RSS: {get_process_rss_mb():.2f} MB)...", flush=True)
         _ocr_engine = RapidOCR()
+        print(f"[OCR] RapidOCR model loaded in {time.time()-t0:.3f}s (RSS: {get_process_rss_mb():.2f} MB).", flush=True)
     return _ocr_engine
 
 # ---------------------------------------------------------------------------
@@ -33,61 +57,69 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 def run_ocr(file_path):
     """
     Run OCR on a receipt image or PDF and return structured results.
-
-    Returns a list of dicts, one per detected text region:
-        {
-            "text":       "Amul Taaza Milk 1L",  <- recognized text
-            "confidence": 0.97,                   <- 0.0 to 1.0
-            "box":        [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]  <- 4 corners
-        }
     """
-    # STEP 1: Load the receipt (handles both .png/.jpg and .pdf)
-    # load_image_or_pdf returns an OpenCV BGR numpy array [H, W, 3]
-    original_image = load_image_or_pdf(file_path)
-    print(f"[OCR] Receipt loaded: {original_image.shape[1]}x{original_image.shape[0]} px")
+    t_start = time.time()
+    t_step = t_start
 
-    # STEP 2: Run Phase 1 preprocessing
-    processed = preprocess_receipt(file_path)
-    
-    # RapidOCR works best on original crisp pixels for digital receipts
-    clean_image = original_image
+    # STEP 1: Load image or PDF
+    print(f"[OCR] Starting pipeline for: '{file_path}' (RSS: {get_process_rss_mb():.2f} MB)", flush=True)
+    original_image = load_image_or_pdf(file_path)
+    t_step = log_step("1. load_image_or_pdf", t_step, original_image)
+
+    # STEP 2: Preprocess receipt (reuse original_image directly to avoid duplicate file loads)
+    processed = preprocess_receipt(original_image)
+    t_step = log_step("2. preprocess_receipt", t_step, original_image)
+
+    # Use deskewed preprocessed image if available, else original
+    if isinstance(processed, dict) and "deskewed" in processed:
+        clean_image = processed["deskewed"]
+    else:
+        clean_image = original_image
 
     if len(clean_image.shape) == 2:
         clean_image_bgr = cv2.cvtColor(clean_image, cv2.COLOR_GRAY2BGR)
     else:
-        clean_image_bgr = clean_image
+        clean_image_bgr = clean_image.copy()
 
-    # STEP 4: Run RapidOCR on the preprocessed image
-    # get_ocr_engine()() returns: (results, timing_info)
-    # results = list of [box, text, confidence] for each detected text region
+    # STEP 3: Downscale if image is extremely large to prevent ONNX OOM tensor spikes
+    h, w = clean_image_bgr.shape[:2]
+    max_dim = max(h, w)
+    if max_dim > 1600:
+        scale = 1600.0 / max_dim
+        new_w, new_h = int(w * scale), int(h * scale)
+        print(f"[OCR] Downscaling image for OCR from {w}x{h} -> {new_w}x{new_h} to prevent ONNX memory spike.", flush=True)
+        clean_image_bgr = cv2.resize(clean_image_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        t_step = log_step("3. image_downscale_for_ocr", t_step, clean_image_bgr)
+
+    # STEP 4: Lazy load OCR engine
     engine = get_ocr_engine()
+    t_step = log_step("4. get_ocr_engine", t_step)
+
+    # STEP 5: Run RapidOCR ONNX inference
+    print(f"[OCR] Starting RapidOCR ONNX inference on image {clean_image_bgr.shape[1]}x{clean_image_bgr.shape[0]} px...", flush=True)
     results, _ = engine(clean_image_bgr)
+    t_step = log_step("5. RapidOCR_inference", t_step, clean_image_bgr)
 
     if results is None or len(results) == 0:
-        print("[OCR] No text detected in this image.")
+        print("[OCR] No text detected in this image.", flush=True)
+        del clean_image_bgr
+        del processed
+        gc.collect()
         return [], original_image
 
-    print(f"\n[OCR] Detected {len(results)} text regions:\n")
-    print(f"{'#':<4} {'Confidence':<12} {'Text'}")
-    print("-" * 70)
+    print(f"\n[OCR] Detected {len(results)} text regions (Total Pipeline Elapsed: {time.time()-t_start:.3f}s):\n", flush=True)
 
     structured_results = []
-
-    for i, item in enumerate(results):
-        box = item[0]          # 4 corner coordinates
-        text = str(item[1])    # recognized text string
-        confidence = float(item[2])   # cast float confidence score (e.g. 0.985)
-
-        print(f"{i+1:<4} {confidence:<12.3f} {text}")
-
-        # Store in structured format for later use in receipt parsing
+    for item in results:
+        box = item[0]
+        text = str(item[1])
+        confidence = float(item[2])
         structured_results.append({
             "text": text,
             "confidence": confidence,
             "box": box
         })
 
-    import gc
     del clean_image_bgr
     del processed
     gc.collect()

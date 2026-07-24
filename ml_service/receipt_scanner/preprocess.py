@@ -115,20 +115,23 @@ def load_image_or_pdf(file_path):
         raise ValueError(f"Could not decode image file at: {file_path}")
     return image
 
-def preprocess_receipt(file_path):
+def preprocess_receipt(file_or_image):
     """
     Complete Phase 1 Receipt Preprocessing Pipeline:
-    1. Load original image OR render PDF Page 1
+    1. Load original image OR render PDF Page 1 (if path provided)
     2. Convert to Grayscale
     3. Denoise with Median Blur
     4. Adaptive Thresholding (Binarization)
     5. Deskewing (Rotation Correction)
     """
     # ---------------------------------------------------------------------
-    # STEP 1: Load Image or PDF
+    # STEP 1: Load Image or PDF if path given, else use provided array
     # ---------------------------------------------------------------------
-    image = load_image_or_pdf(file_path)
-    print(f"[STEP 1] Image Loaded: {image.shape[1]}x{image.shape[0]} px, 3 channels (BGR)")
+    if isinstance(file_or_image, np.ndarray):
+        image = file_or_image
+    else:
+        image = load_image_or_pdf(file_or_image)
+    print(f"[STEP 1] Image Ready for Preprocessing: {image.shape[1]}x{image.shape[0]} px, 3 channels (BGR)")
 
     # ---------------------------------------------------------------------
     # STEP 2: Grayscale Conversion
