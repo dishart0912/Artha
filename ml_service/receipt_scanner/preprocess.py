@@ -71,12 +71,13 @@ def load_image_or_pdf(file_path):
         
         # Primary Renderer: PyMuPDF (fitz)
         try:
+            # pyrefly: ignore [missing-import]
             import fitz
-            print(f"[PDF] Rendering Page 1 of PDF file: '{file_path}' at 300 DPI using PyMuPDF...")
+            print(f"[PDF] Rendering Page 1 of PDF file: '{file_path}' at 150 DPI using PyMuPDF...")
             doc = fitz.open(file_path)
             if len(doc) > 0:
                 page = doc[0]
-                pix = page.get_pixmap(dpi=300)
+                pix = page.get_pixmap(dpi=150)
                 image_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
                 if pix.n == 4:
                     image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGBA2BGR)
@@ -93,9 +94,10 @@ def load_image_or_pdf(file_path):
 
         # Fallback Renderer: pdf2image
         try:
+            # pyrefly: ignore [missing-import]
             from pdf2image import convert_from_path
             print(f"[PDF] Attempting fallback rendering with pdf2image...")
-            images = convert_from_path(file_path, first_page=1, last_page=1, dpi=300)
+            images = convert_from_path(file_path, first_page=1, last_page=1, dpi=150)
             if images:
                 image_np = np.array(images[0])
                 return cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
