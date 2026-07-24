@@ -42,8 +42,9 @@ def get_ocr_engine():
     global _ocr_engine
     if _ocr_engine is None:
         t0 = time.time()
-        print(f"[OCR] Lazy loading RapidOCR ONNX models into memory (RSS: {get_process_rss_mb():.2f} MB)...", flush=True)
-        _ocr_engine = RapidOCR()
+        print(f"[OCR] Lazy loading RapidOCR ONNX models into memory (use_angle_cls=False, RSS: {get_process_rss_mb():.2f} MB)...", flush=True)
+        # Disabling angle classification model saves loading/running 3rd ONNX model, cutting RAM spike dramatically
+        _ocr_engine = RapidOCR(use_angle_cls=False)
         print(f"[OCR] RapidOCR model loaded in {time.time()-t0:.3f}s (RSS: {get_process_rss_mb():.2f} MB).", flush=True)
     return _ocr_engine
 
@@ -81,13 +82,13 @@ def run_ocr(file_path):
     else:
         clean_image_bgr = clean_image.copy()
 
-    # STEP 3: Downscale if image is extremely large to prevent ONNX OOM tensor spikes
+    # STEP 3: Downscale to 960px max dimension for OCR to keep ONNX tensor RAM under ~60MB
     h, w = clean_image_bgr.shape[:2]
     max_dim = max(h, w)
-    if max_dim > 1600:
-        scale = 1600.0 / max_dim
+    if max_dim > 960:
+        scale = 960.0 / max_dim
         new_w, new_h = int(w * scale), int(h * scale)
-        print(f"[OCR] Downscaling image for OCR from {w}x{h} -> {new_w}x{new_h} to prevent ONNX memory spike.", flush=True)
+        print(f"[OCR] Downscaling image for OCR from {w}x{h} -> {new_w}x{new_h} to fit Render 512MB RAM limit.", flush=True)
         clean_image_bgr = cv2.resize(clean_image_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
         t_step = log_step("3. image_downscale_for_ocr", t_step, clean_image_bgr)
 
@@ -95,17 +96,27 @@ def run_ocr(file_path):
     engine = get_ocr_engine()
     t_step = log_step("4. get_ocr_engine", t_step)
 
+    # Free all temporary image references and run garbage collector IMMEDIATELY before ONNX inference
+    del original_image
+    del processed
+    gc.collect()
+
     # STEP 5: Run RapidOCR ONNX inference
-    print(f"[OCR] Starting RapidOCR ONNX inference on image {clean_image_bgr.shape[1]}x{clean_image_bgr.shape[0]} px...", flush=True)
+    rss_pre = get_process_rss_mb()
+    print(f"[OCR PRE-INFERENCE] RSS immediately before engine(...): {rss_pre:.2f} MB | Input shape: {clean_image_bgr.shape[1]}x{clean_image_bgr.shape[0]} px ({clean_image_bgr.nbytes / (1024*1024):.2f} MB)", flush=True)
+    
+    t_inf = time.time()
     results, _ = engine(clean_image_bgr)
+    
+    rss_post = get_process_rss_mb()
+    print(f"[OCR POST-INFERENCE] RSS immediately after engine(...): {rss_post:.2f} MB | Inference Time: {time.time()-t_inf:.3f}s | Delta RSS: +{rss_post - rss_pre:.2f} MB", flush=True)
     t_step = log_step("5. RapidOCR_inference", t_step, clean_image_bgr)
 
     if results is None or len(results) == 0:
         print("[OCR] No text detected in this image.", flush=True)
         del clean_image_bgr
-        del processed
         gc.collect()
-        return [], original_image
+        return [], None
 
     print(f"\n[OCR] Detected {len(results)} text regions (Total Pipeline Elapsed: {time.time()-t_start:.3f}s):\n", flush=True)
 
