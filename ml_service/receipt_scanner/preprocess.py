@@ -69,27 +69,10 @@ def load_image_or_pdf(file_path):
     if is_pdf_file(file_path):
         pdf_errors = []
         
-        # Primary Renderer: pypdfium2
-        try:
-            import pypdfium2 as pdfium
-            print(f"[PDF] Rendering Page 1 of PDF file: '{file_path}' at 300 DPI...")
-            pdf = pdfium.PdfDocument(file_path)
-            if len(pdf) == 0:
-                raise ValueError("Uploaded PDF file contains 0 pages.")
-            page = pdf[0]
-            image_pil = page.render(scale=300/72).to_pil()
-            image_np = np.array(image_pil)
-            image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-            return image_bgr
-        except ImportError:
-            pdf_errors.append("pypdfium2 module not installed.")
-        except Exception as e:
-            print(f"[PDF WARN] pypdfium2 rendering failed: {e}")
-            pdf_errors.append(f"pypdfium2 error: {e}")
-
-        # Fallback Renderer 1: PyMuPDF (fitz)
+        # Primary Renderer: PyMuPDF (fitz)
         try:
             import fitz
+            print(f"[PDF] Rendering Page 1 of PDF file: '{file_path}' at 300 DPI using PyMuPDF...")
             doc = fitz.open(file_path)
             if len(doc) > 0:
                 page = doc[0]
@@ -100,12 +83,18 @@ def load_image_or_pdf(file_path):
                 else:
                     image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
                 return image_bgr
+            else:
+                raise ValueError("Uploaded PDF file contains 0 pages.")
+        except ImportError:
+            pdf_errors.append("PyMuPDF (fitz) module not installed.")
         except Exception as e:
+            print(f"[PDF WARN] PyMuPDF rendering failed: {e}")
             pdf_errors.append(f"PyMuPDF error: {e}")
 
-        # Fallback Renderer 2: pdf2image
+        # Fallback Renderer: pdf2image
         try:
             from pdf2image import convert_from_path
+            print(f"[PDF] Attempting fallback rendering with pdf2image...")
             images = convert_from_path(file_path, first_page=1, last_page=1, dpi=300)
             if images:
                 image_np = np.array(images[0])

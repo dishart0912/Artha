@@ -5,6 +5,6 @@ numpy
 joblib
 gunicorn
 opencv-python-headless
-pypdfium2
+PyMuPDF
 rapidocr-onnxruntime
 Pillow
