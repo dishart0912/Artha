@@ -1,3 +1,7 @@
+print("APP.PY LOADED", flush=True)
+app = Flask(__name__)
+
+print("FLASK APP CREATED", flush=True)
 import os
 import joblib
 from flask import Flask, request, jsonify
