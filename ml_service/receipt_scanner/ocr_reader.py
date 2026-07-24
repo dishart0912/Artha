@@ -14,7 +14,14 @@ from preprocess import load_image_or_pdf, preprocess_receipt
 # On first run: downloads DB-Net + CLS + CRNN model weights (~150MB) to cache.
 # On every subsequent run: loads from cache instantly (no download needed).
 from rapidocr_onnxruntime import RapidOCR
-ocr_engine = RapidOCR()
+_ocr_engine = None
+
+def get_ocr_engine():
+    global _ocr_engine
+    if _ocr_engine is None:
+        print("[OCR] Lazy loading RapidOCR models into memory...")
+        _ocr_engine = RapidOCR()
+    return _ocr_engine
 
 # ---------------------------------------------------------------------------
 # SECTION 2: Output Directory
@@ -51,13 +58,14 @@ def run_ocr(file_path):
         clean_image_bgr = clean_image
 
     # STEP 4: Run RapidOCR on the preprocessed image
-    # ocr_engine() returns: (results, timing_info)
+    # get_ocr_engine()() returns: (results, timing_info)
     # results = list of [box, text, confidence] for each detected text region
-    results, _ = ocr_engine(clean_image_bgr)
+    engine = get_ocr_engine()
+    results, _ = engine(clean_image_bgr)
 
     if results is None or len(results) == 0:
         print("[OCR] No text detected in this image.")
-        return []
+        return [], original_image
 
     print(f"\n[OCR] Detected {len(results)} text regions:\n")
     print(f"{'#':<4} {'Confidence':<12} {'Text'}")
@@ -66,11 +74,6 @@ def run_ocr(file_path):
     structured_results = []
 
     for i, item in enumerate(results):
-        # Each 'item' in results is: [bounding_box, text, confidence_score]
-        # bounding_box: list of 4 corner coordinates [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
-        # text:         the recognized string e.g. "Amul Taaza Milk 1L"
-        # confidence:   float from 0.0 to 1.0
-
         box = item[0]          # 4 corner coordinates
         text = str(item[1])    # recognized text string
         confidence = float(item[2])   # cast float confidence score (e.g. 0.985)
@@ -83,6 +86,11 @@ def run_ocr(file_path):
             "confidence": confidence,
             "box": box
         })
+
+    import gc
+    del clean_image_bgr
+    del processed
+    gc.collect()
 
     return structured_results, original_image
 

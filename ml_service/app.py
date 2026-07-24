@@ -14,16 +14,20 @@ CORS(app)
 
 # Load trained Machine Learning model pipeline on startup
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "receipt_scanner", "receipt_model.joblib")
-receipt_ml_model = None
+_receipt_ml_model = None
 
-if os.path.exists(MODEL_PATH):
-    try:
-        receipt_ml_model = joblib.load(MODEL_PATH)
-        print(f"[ML SERVICE] Loaded Receipt ML Model from '{MODEL_PATH}'")
-    except Exception as e:
-        print(f"[ML SERVICE WARNING] Failed to load ML model: {e}")
-else:
-    print(f"[ML SERVICE WARNING] ML model file not found at '{MODEL_PATH}'")
+def get_ml_model():
+    global _receipt_ml_model
+    if _receipt_ml_model is None:
+        if os.path.exists(MODEL_PATH):
+            try:
+                print(f"[ML SERVICE] Lazy loading Receipt ML Model from '{MODEL_PATH}'...")
+                _receipt_ml_model = joblib.load(MODEL_PATH)
+            except Exception as e:
+                print(f"[ML SERVICE WARNING] Failed to load ML model: {e}")
+        else:
+            print(f"[ML SERVICE WARNING] ML model file not found at '{MODEL_PATH}'")
+    return _receipt_ml_model
 
 DEFAULT_CATEGORIES = [
     {"name": "Home", "subcategories": ["Groceries", "Electricity Bill", "Water Bill", "Rent", "Maintenance"]},
@@ -49,11 +53,12 @@ def classify_item():
     if not item_name:
         return jsonify({"error": "Please provide 'item_name'"}), 400
 
-    if receipt_ml_model is None:
+    model = get_ml_model()
+    if model is None:
         return jsonify({"error": "Receipt ML Model is not loaded"}), 500
 
-    predicted_category = receipt_ml_model.predict([item_name])[0]
-    probabilities = receipt_ml_model.predict_proba([item_name])[0]
+    predicted_category = model.predict([item_name])[0]
+    probabilities = model.predict_proba([item_name])[0]
     max_confidence = float(max(probabilities))
 
     return jsonify({
@@ -156,7 +161,6 @@ def scan_receipt():
 
         # Step 1: Preprocess & OCR Extraction
         ocr_results, original_img = run_ocr(temp_path)
-        raw_bgr = load_image_or_pdf(temp_path)
 
         # Step 2: Spatial Bounding Box Receipt Parsing
         parsed_items = parse_receipt_items_spatial(ocr_results)
@@ -184,6 +188,10 @@ def scan_receipt():
 
         print(f"[RECEIPT SCANNER SUCCESS] Parsed {len(itemized_expenses)} line items. Total: Rs.{total_bill_amount:.2f}")
 
+        import gc
+        del original_img
+        gc.collect()
+
         return jsonify({
             "success": True,
             "totalItems": len(itemized_expenses),
@@ -204,6 +212,8 @@ def scan_receipt():
                 os.remove(temp_path)
             except Exception:
                 pass
+        import gc
+        gc.collect()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))

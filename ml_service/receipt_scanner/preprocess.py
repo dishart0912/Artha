@@ -171,11 +171,16 @@ def preprocess_receipt(file_path):
 
     print(f"[COMPLETED] Preprocessing finished! Saved 4 output images to '{OUTPUT_DIR}'.")
 
+    import gc
+    del gray
+    del denoised
+    del binary
+    gc.collect()
+
+    # Only returning deskewed allows Python to free all intermediate memory.
+    # original image is returned since some downstream tasks might need it.
     return {
         "original": image,
-        "gray": gray,
-        "denoised": denoised,
-        "binary": binary,
         "deskewed": deskewed
     }
 
