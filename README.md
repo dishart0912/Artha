@@ -1,6 +1,3 @@
-Here is the complete updated `README.md` markdown content ready for you to copy and paste directly into GitHub:
-
-```markdown
 # 💰 Artha - Personal Finance & Credit Card Management Platform
 
 Artha is a full-stack personal finance management platform built using the MERN stack and Python. It helps users manage expenses, income, bank accounts, recurring expenses, receivables, and multiple credit cards while tracking billing cycles and spending patterns.
