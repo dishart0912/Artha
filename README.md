@@ -184,4 +184,4 @@ LinkedIn: www.linkedin.com/in/dishatakawale
 ## ⭐ Motivation
 
 This project was built to solve a real-world financial management problem involving multiple credit cards, billing cycles, recurring expenses, and business-related expense tracking. It combines practical financial workflows with modern web technologies and machine learning to create a centralized, automated personal finance management system.
-```
+
