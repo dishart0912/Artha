@@ -43,7 +43,6 @@ def get_ocr_engine():
     if _ocr_engine is None:
         t0 = time.time()
         print(f"[OCR] Lazy loading RapidOCR ONNX models into memory (use_angle_cls=False, RSS: {get_process_rss_mb():.2f} MB)...", flush=True)
-        # Disabling angle classification model saves loading/running 3rd ONNX model, cutting RAM spike dramatically
         _ocr_engine = RapidOCR(use_angle_cls=False)
         print(f"[OCR] RapidOCR model loaded in {time.time()-t0:.3f}s (RSS: {get_process_rss_mb():.2f} MB).", flush=True)
     return _ocr_engine
@@ -82,13 +81,22 @@ def run_ocr(file_path):
     else:
         clean_image_bgr = clean_image.copy()
 
-    # STEP 3: Downscale to 960px max dimension for OCR to keep ONNX tensor RAM under ~60MB
+    # STEP 3: Optimize dimensions (max width 1200px, max height 2500px) for ultra-sharp high-accuracy OCR
     h, w = clean_image_bgr.shape[:2]
-    max_dim = max(h, w)
-    if max_dim > 960:
-        scale = 960.0 / max_dim
-        new_w, new_h = int(w * scale), int(h * scale)
-        print(f"[OCR] Downscaling image for OCR from {w}x{h} -> {new_w}x{new_h} to fit Render 512MB RAM limit.", flush=True)
+    new_w, new_h = w, h
+
+    if w > 1200:
+        scale_w = 1200.0 / w
+        new_w = 1200
+        new_h = int(h * scale_w)
+
+    if new_h > 2500:
+        scale_h = 2500.0 / new_h
+        new_h = 2500
+        new_w = int(new_w * scale_h)
+
+    if (new_w, new_h) != (w, h):
+        print(f"[OCR] Resizing image for high-accuracy OCR from {w}x{h} -> {new_w}x{new_h} px.", flush=True)
         clean_image_bgr = cv2.resize(clean_image_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
         t_step = log_step("3. image_downscale_for_ocr", t_step, clean_image_bgr)
 
@@ -132,10 +140,9 @@ def run_ocr(file_path):
         })
 
     del clean_image_bgr
-    del processed
     gc.collect()
 
-    return structured_results, original_image
+    return structured_results, None
 
 
 def draw_bounding_boxes(image, structured_results, output_path):

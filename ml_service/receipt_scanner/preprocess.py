@@ -71,19 +71,43 @@ def load_image_or_pdf(file_path):
         
         # Primary Renderer: PyMuPDF (fitz)
         try:
-            # pyrefly: ignore [missing-import]
-            import fitz
+            try:
+                import pymupdf as fitz
+            except ImportError:
+                import fitz
             print(f"[PDF] Rendering Page 1 of PDF file: '{file_path}' at 150 DPI using PyMuPDF...")
             doc = fitz.open(file_path)
-            if len(doc) > 0:
-                page = doc[0]
-                pix = page.get_pixmap(dpi=150)
-                image_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-                if pix.n == 4:
-                    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGBA2BGR)
-                else:
-                    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-                return image_bgr
+            num_pages = len(doc)
+            if num_pages > 0:
+                pages_to_render = min(num_pages, 2)
+                print(f"[PDF] Rendering top {pages_to_render} page(s) (of {num_pages}) of PDF file: '{file_path}' at 150 DPI using PyMuPDF...")
+                page_images = []
+                for p_idx in range(pages_to_render):
+                    page = doc[p_idx]
+                    pix = page.get_pixmap(dpi=150)
+                    image_np = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+                    if pix.n == 4:
+                        img_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGBA2BGR)
+                    else:
+                        img_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+                    page_images.append(img_bgr)
+
+                if len(page_images) == 1:
+                    return page_images[0]
+
+                # Match widths of all rendered PDF pages before vertical stacking
+                max_w = max(img.shape[1] for img in page_images)
+                resized_pages = []
+                for img in page_images:
+                    if img.shape[1] != max_w:
+                        h, w = img.shape[:2]
+                        new_h = int(h * (max_w / w))
+                        img = cv2.resize(img, (max_w, new_h), interpolation=cv2.INTER_AREA)
+                    resized_pages.append(img)
+                
+                stacked_image = np.vstack(resized_pages)
+                print(f"[PDF SUCCESS] Concatenated {pages_to_render} pages into single image: {stacked_image.shape[1]}x{stacked_image.shape[0]} px")
+                return stacked_image
             else:
                 raise ValueError("Uploaded PDF file contains 0 pages.")
         except ImportError:

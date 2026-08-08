@@ -161,6 +161,20 @@ def match_transaction_to_user_categories(txn_name, user_categories):
     best_score = float(similarity_scores[best_idx])
     best_main, best_sub = candidate_pairs[best_idx]
 
+    # If score is very weak (< 0.05), fallback to sensible default category instead of arbitrarily picking candidate_pairs[0]
+    if best_score < 0.05:
+        # Search for a Home/Groceries/Personal/Others category pair in candidate_pairs
+        smart_fallback = None
+        for main_c, sub_c in candidate_pairs:
+            m_lower, s_lower = main_c.lower(), sub_c.lower()
+            if any(k in m_lower or k in s_lower for k in ["home", "grocer", "personal", "other"]):
+                smart_fallback = (main_c, sub_c)
+                break
+        
+        if smart_fallback:
+            best_main, best_sub = smart_fallback
+            best_score = 0.0
+
     # Normalize score for friendly confidence percentage display (e.g. 0.50 -> 0.90)
     confidence = min(0.99, max(0.65, round(best_score + 0.35 if best_score > 0.05 else 0.50, 2)))
 

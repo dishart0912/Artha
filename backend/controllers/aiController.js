@@ -143,7 +143,7 @@ const scanReceipt = async (req, res) => {
             headers: form.getHeaders(),
             maxContentLength: Infinity,
             maxBodyLength: Infinity,
-            timeout: 65000
+            timeout: 120000
         });
 
         console.log(`[EXPRESS -> ML] Step 3: Received response from ML service with status ${mlResponse.status}`);

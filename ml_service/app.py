@@ -1,6 +1,18 @@
 import os
+import sys
 import time
 import joblib
+
+# Force UTF-8 output on Windows to safely handle any Unicode in print statements.
+# Windows terminals default to cp1252 which crashes on arrows/rupee/emoji symbols.
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -14,9 +26,10 @@ print("FLASK APP CREATED", flush=True)
 
 from dynamic_matcher import match_transaction_to_user_categories
 
-from receipt_scanner.preprocess import load_image_or_pdf, preprocess_receipt
+from receipt_scanner.preprocess import load_image_or_pdf, preprocess_receipt, is_pdf_file
 from receipt_scanner.ocr_reader import run_ocr
-from receipt_scanner.receipt_parser import parse_receipt_items_spatial
+from receipt_scanner.receipt_parser import parse_receipt_items_spatial, safe_float
+from receipt_scanner.pdf_native_parser import is_native_pdf, parse_pdf_natively
 
 # Load trained Machine Learning model pipeline on startup
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "receipt_scanner", "receipt_model.joblib")
@@ -170,11 +183,27 @@ def scan_receipt():
 
         print(f"[RECEIPT SCANNER] Processing uploaded bill from: '{temp_path}'")
 
-        # Step 1: Preprocess & OCR Extraction
-        ocr_results, original_img = run_ocr(temp_path)
+        # ── Fast-path: native PDF text-layer extraction (zero OCR noise) ──────
+        # Digital PDFs (e.g. Blinkit, Swiggy tax invoices) embed text; using
+        # PyMuPDF's word extractor gives perfect accuracy without RapidOCR.
+        parsed_items = []
+        original_img = None
+        used_native = False
 
-        # Step 2: Spatial Bounding Box Receipt Parsing
-        parsed_items = parse_receipt_items_spatial(ocr_results)
+        if is_pdf_file(temp_path) and is_native_pdf(temp_path):
+            print("[RECEIPT SCANNER] PDF has text layer -> using native extraction (no OCR)")
+            parsed_items = parse_pdf_natively(temp_path)
+            if parsed_items:
+                used_native = True
+                print(f"[RECEIPT SCANNER] Native extraction returned {len(parsed_items)} items (OK)")
+            else:
+                print("[RECEIPT SCANNER] Native extraction returned 0 items -> falling back to OCR")
+
+        # ── OCR fallback (scanned images, non-text PDFs, native parse failure) ─
+        if not used_native:
+            print("[RECEIPT SCANNER] Using OCR pipeline...")
+            ocr_results, original_img = run_ocr(temp_path)
+            parsed_items = parse_receipt_items_spatial(ocr_results)
 
         # Step 4: Map each parsed item against User's Dynamic Categories
         itemized_expenses = []
@@ -182,7 +211,7 @@ def scan_receipt():
 
         for item in parsed_items:
             item_desc = item.get("name") or item.get("description", "")
-            item_price = item["price"]
+            item_price = safe_float(item.get("price", 0.0))
             total_bill_amount += item_price
 
             # Match item description against user's custom category tree
@@ -200,7 +229,8 @@ def scan_receipt():
         print(f"[RECEIPT SCANNER SUCCESS] Parsed {len(itemized_expenses)} line items. Total: Rs.{total_bill_amount:.2f}")
 
         import gc
-        del original_img
+        if original_img is not None:
+            del original_img
         gc.collect()
 
         return jsonify({
